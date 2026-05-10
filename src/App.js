@@ -546,10 +546,17 @@ export default function LoanTracker() {
     setConfirmData({
       message: `Delete loan for ${loan.borrower_name}? This cannot be undone.`,
       onConfirm: async () => {
-        await supabase("DELETE", `/loans?id=eq.${loan.id}`);
-        showToast("Loan deleted.");
-        await fetchLoans();
+        // Remove from UI immediately so it disappears right away
+        setLoans((prev) => prev.filter((l) => l.id !== loan.id));
         setModal(null);
+        try {
+          await supabase("DELETE", `/loans?id=eq.${loan.id}`);
+          showToast("Loan deleted.");
+        } catch (e) {
+          // If delete fails, reload from database
+          showToast("Delete failed. Please try again.");
+          await fetchLoans();
+        }
       },
     });
     setModal("confirm");

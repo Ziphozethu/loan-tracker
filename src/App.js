@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useCallback } from "react";
 
 // ── Supabase config ──────────────────────────────────────────────────────────
-const SUPABASE_URL = "https://fdsqwpgwhcpceiptamfy.supabase.co";
-const SUPABASE_KEY = "sb_publishable_umuFeOvqGzD1PJCFAWLjNQ_NKK78-Aj";
+const SUPABASE_URL = process.env.REACT_APP_SUPABASE_URL || "https://fdsqwpgwhcpceiptamfy.supabase.co";
+const SUPABASE_KEY = process.env.REACT_APP_SUPABASE_KEY || "sb_publishable_umuFeOvqGzD1PJCFAWLjNQ_NKK78-Aj";
 
 async function supabase(method, path, body) {
   const res = await fetch(`${SUPABASE_URL}/rest/v1${path}`, {

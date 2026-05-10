@@ -1,53 +1,222 @@
-# Getting Started with Create React App
+# LoanTrack - Professional Loan Management System
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+A modern, secure loan tracking and management application built with React and Supabase. Track loans, manage borrowers, and send WhatsApp reminders with ease.
 
-## Available Scripts
+## Features
 
-In the project directory, you can run:
+✅ **Borrower Management** - Add, edit, and delete borrower records
+✅ **Multi-image Support** - Upload two profile images for each borrower
+✅ **Account Tracking** - Track account numbers and residency information
+✅ **Currency Support** - South African Rand (ZAR) formatting
+✅ **Phone Formatting** - Automatic South African phone number formatting
+✅ **Loan Tracking** - Monitor active, overdue, and paid loans
+✅ **WhatsApp Integration** - Send payment reminders directly via WhatsApp
+✅ **Role-based Access** - Admin and Viewer roles with PIN protection
+✅ **Real-time Updates** - Instant synchronization with Supabase
 
-### `npm start`
+## Prerequisites
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in your browser.
+- Node.js 16+ and npm
+- Supabase account (free tier available at https://supabase.co)
+- React 19.x
 
-The page will reload when you make changes.\
-You may also see any lint errors in the console.
+## Setup Instructions
 
-### `npm test`
+### 1. Clone or Download the Project
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+```bash
+cd loan-tracker
+npm install
+```
 
-### `npm run build`
+### 2. Configure Supabase
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+1. Create a Supabase project at https://supabase.co
+2. Create a table named `loans` with the following columns:
+   - `id` (UUID, primary key)
+   - `borrower_name` (text)
+   - `phone` (text)
+   - `account_number` (text)
+   - `residency_place` (text)
+   - `amount` (numeric)
+   - `loan_date` (date)
+   - `due_date` (date)
+   - `notes` (text, nullable)
+   - `status` (text: 'active' or 'paid')
+   - `image1` (text, nullable - stores base64)
+   - `image2` (text, nullable - stores base64)
+   - `created_at` (timestamp)
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+3. Copy your Supabase URL and Public API Key
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+### 3. Environment Variables
 
-### `npm run eject`
+Create a `.env.local` file in the project root:
 
-**Note: this is a one-way operation. Once you `eject`, you can't go back!**
+```env
+REACT_APP_SUPABASE_URL=https://your-project.supabase.co
+REACT_APP_SUPABASE_KEY=your_public_api_key_here
+```
 
-If you aren't satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
+Or copy from `.env.example`:
+```bash
+cp .env.example .env.local
+```
 
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you're on your own.
+### 4. Run Locally
 
-You don't have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn't feel obligated to use this feature. However we understand that this tool wouldn't be useful if you couldn't customize it when you are ready for it.
+```bash
+npm start
+```
 
-## Learn More
+Visit http://localhost:3000
 
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
+**Default Credentials:**
+- Admin PIN: `1234` (change in App.js line where `ADMIN_PIN` is defined)
 
-To learn React, check out the [React documentation](https://reactjs.org/).
+## Deployment to Vercel
 
-### Code Splitting
+### 1. Prepare for Deployment
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/code-splitting](https://facebook.github.io/create-react-app/docs/code-splitting)
+```bash
+npm run build
+```
+
+### 2. Deploy to Vercel
+
+**Option A: CLI (Recommended)**
+```bash
+npm i -g vercel
+vercel
+```
+
+**Option B: GitHub Integration**
+1. Push your code to GitHub
+2. Connect your repo to Vercel at https://vercel.com
+3. Add environment variables in Vercel dashboard
+
+### 3. Set Environment Variables on Vercel
+
+In your Vercel project settings:
+1. Go to **Settings** → **Environment Variables**
+2. Add:
+   - Key: `REACT_APP_SUPABASE_URL` → Value: Your Supabase URL
+   - Key: `REACT_APP_SUPABASE_KEY` → Value: Your Supabase Key
+
+### 4. Deploy
+
+```bash
+vercel --prod
+```
+
+## Project Structure
+
+```
+loan-tracker/
+├── src/
+│   ├── App.js (Main application)
+│   ├── App.css
+│   ├── index.js
+│   └── ...
+├── public/
+├── package.json
+├── vercel.json (Deployment config)
+├── .env.example (Environment template)
+└── README.md
+```
+
+## Key Changes in Latest Update
+
+### Currency
+- Changed from Nigerian Naira (NGN) to South African Rand (ZAR)
+- All amounts now display in ZAR format
+
+### Phone Formatting
+- Automatic formatting of South African phone numbers
+- Supports formats: 0XXXXXXXXX, 27XXXXXXXXX, +27XXXXXXXXX
+- Displays as: +27 XXX XXX XXXX
+
+### New Borrower Fields
+- **Account Number**: Bank account for loan repayment
+- **Residency Place**: City or area where borrower resides
+- **Image 1 & 2**: Two profile images stored as base64
+
+### Date Formatting
+- Updated to South African date format (en-ZA)
+
+## Usage
+
+### Admin Functions
+- Add new loans with complete borrower details
+- Edit existing loan records
+- Delete loans (with confirmation)
+- Mark loans as paid
+- Send WhatsApp payment reminders
+- Upload and manage borrower images
+
+### Viewer Functions
+- View all loans and borrower information
+- Filter by status (Active, Overdue, Paid)
+- Search by name or phone number
+- Send WhatsApp reminders
+- Mark loans as paid
+
+## WhatsApp Integration
+
+The app uses WhatsApp Web API to send reminders. When you click "Remind":
+1. A pre-formatted message is generated
+2. Your default WhatsApp chat opens
+3. Adjust if needed and send manually
+
+**Message includes:**
+- Borrower name
+- Loan amount
+- Due date
+- Reference/notes
+
+## Browser Support
+
+- Chrome 90+
+- Firefox 88+
+- Safari 14+
+- Edge 90+
+
+## Security Notes
+
+⚠️ **Important:**
+- Change the default admin PIN immediately
+- Keep Supabase API keys confidential
+- Use HTTPS in production (Vercel provides this)
+- Never commit `.env.local` to git
+- Review Supabase Row Level Security settings
+
+## Troubleshooting
+
+### Images not saving
+- Ensure your browser supports FileReader API
+- Check browser console for errors
+- Verify Supabase table has image columns
+
+### WhatsApp link not opening
+- Ensure phone numbers are in correct format
+- Check if WhatsApp is installed on your device
+- Try opening in WhatsApp Web if on desktop
+
+### Login issues
+- Clear browser cookies/cache
+- Verify admin PIN is correct
+- Check browser console for errors
+
+## Support
+
+For issues or questions:
+1. Check the troubleshooting section above
+2. Review Supabase documentation: https://supabase.io/docs
+3. Check React documentation: https://react.dev
+
+## License
+
+This project is private and proprietary.
 
 ### Analyzing the Bundle Size
 

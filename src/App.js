@@ -24,9 +24,35 @@ async function supabase(method, path, body) {
   return text ? JSON.parse(text) : [];
 }
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
+// ── Passwords (stored in localStorage so admin can change them) ───────────────
+const getPasswords = () => {
+  try {
+    const stored = localStorage.getItem("loantrack_passwords");
+    if (stored) return JSON.parse(stored);
+  } catch (e) {}
+  return { admin: "1234", viewer: "Zesuliwe" };
+};
+
+const savePasswords = (passwords) => {
+  localStorage.setItem("loantrack_passwords", JSON.stringify(passwords));
+};
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
 const fmt = (n) =>
-  Number(n).toLocaleString("en-NG", { style: "currency", currency: "NGN", maximumFractionDigits: 0 });
+  Number(n).toLocaleString("en-ZA", { style: "currency", currency: "ZAR", maximumFractionDigits: 0 });
+
+const formatPhoneZA = (phone) => {
+  const digits = phone.replace(/\D/g, "");
+  if (digits.length === 0) return "";
+  if (digits.startsWith("27") && digits.length >= 11) {
+    return `+27 ${digits.slice(2, 5)} ${digits.slice(5, 8)} ${digits.slice(8)}`;
+  }
+  if (digits.length === 10 && digits.startsWith("0")) {
+    const noZero = digits.slice(1);
+    return `+27 ${noZero.slice(0, 3)} ${noZero.slice(3, 6)} ${noZero.slice(6)}`;
+  }
+  return phone;
+};
 
 const daysLeft = (due) => {
   const diff = new Date(due) - new Date();
@@ -43,7 +69,7 @@ const statusLabel = (loan) => {
 };
 
 function buildWhatsAppMessage(loan) {
-  const due = new Date(loan.due_date).toLocaleDateString("en-NG", {
+  const due = new Date(loan.due_date).toLocaleDateString("en-ZA", {
     day: "numeric", month: "long", year: "numeric",
   });
   return (
@@ -56,7 +82,7 @@ function buildWhatsAppMessage(loan) {
   );
 }
 
-// ── Styles ───────────────────────────────────────────────────────────────────
+// ── Styles ────────────────────────────────────────────────────────────────────
 const css = `
   @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=DM+Sans:wght@300;400;500;600&display=swap');
 
@@ -78,117 +104,143 @@ const css = `
     --shadow-lg: 0 8px 32px rgba(0,0,0,0.12);
   }
 
-  body { background: var(--bg); font-family: 'DM Sans', sans-serif; color: var(--text); min-height: 100vh; }
+  html { -webkit-text-size-adjust: 100%; }
+  body { background: var(--bg); font-family: 'DM Sans', sans-serif; color: var(--text); min-height: 100vh; overflow-x: hidden; }
 
-  .app { max-width: 1100px; margin: 0 auto; padding: 24px 16px 48px; }
+  .app { width: 100%; max-width: 1200px; margin: 0 auto; padding: 16px 12px 60px; overflow-x: auto; }
 
   /* Header */
-  .header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 32px; padding-bottom: 20px; border-bottom: 1px solid var(--border); }
-  .header-left h1 { font-family: 'Playfair Display', serif; font-size: 26px; color: var(--accent); letter-spacing: -0.5px; }
-  .header-left p { font-size: 13px; color: var(--muted); margin-top: 2px; }
-  .header-right { display: flex; gap: 10px; align-items: center; }
-  .role-badge { font-size: 11px; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; padding: 4px 10px; border-radius: 20px; background: var(--accent-light); color: var(--accent); }
+  .header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 24px; padding-bottom: 16px; border-bottom: 1px solid var(--border); gap: 12px; flex-wrap: wrap; }
+  .header-left h1 { font-family: 'Playfair Display', serif; font-size: 22px; color: var(--accent); letter-spacing: -0.5px; }
+  .header-left p { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .header-right { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .role-badge { font-size: 10px; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; padding: 4px 10px; border-radius: 20px; background: var(--accent-light); color: var(--accent); white-space: nowrap; }
 
   /* Buttons */
-  .btn { display: inline-flex; align-items: center; gap: 6px; font-family: 'DM Sans', sans-serif; font-size: 13px; font-weight: 500; padding: 9px 18px; border-radius: 8px; border: none; cursor: pointer; transition: all 0.15s; }
+  .btn { display: inline-flex; align-items: center; gap: 6px; font-family: 'DM Sans', sans-serif; font-size: 13px; font-weight: 500; padding: 9px 16px; border-radius: 8px; border: none; cursor: pointer; transition: all 0.15s; white-space: nowrap; }
   .btn-primary { background: var(--accent); color: #fff; }
   .btn-primary:hover { background: #0f2418; }
   .btn-ghost { background: transparent; color: var(--muted); border: 1px solid var(--border); }
   .btn-ghost:hover { background: var(--border); color: var(--text); }
   .btn-danger { background: var(--danger-light); color: var(--danger); border: 1px solid #fecaca; }
   .btn-danger:hover { background: #fee2e2; }
-  .btn-sm { padding: 6px 12px; font-size: 12px; }
+  .btn-sm { padding: 6px 10px; font-size: 12px; }
 
   /* Stats */
-  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; margin-bottom: 28px; }
-  .stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px 22px; }
-  .stat-card .label { font-size: 11px; font-weight: 600; letter-spacing: 0.8px; text-transform: uppercase; color: var(--muted); margin-bottom: 6px; }
-  .stat-card .value { font-family: 'Playfair Display', serif; font-size: 24px; color: var(--text); }
+  .stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 20px; }
+  .stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; }
+  .stat-card .label { font-size: 10px; font-weight: 600; letter-spacing: 0.8px; text-transform: uppercase; color: var(--muted); margin-bottom: 4px; }
+  .stat-card .value { font-family: 'Playfair Display', serif; font-size: 20px; color: var(--text); }
   .stat-card .value.danger { color: var(--danger); }
   .stat-card .value.gold { color: var(--gold); }
 
   /* Filters */
-  .toolbar { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; align-items: center; }
-  .filter-btn { font-size: 12px; font-weight: 500; padding: 6px 14px; border-radius: 20px; border: 1px solid var(--border); background: var(--surface); color: var(--muted); cursor: pointer; transition: all 0.15s; }
+  .toolbar { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; align-items: center; }
+  .filter-btn { font-size: 12px; font-weight: 500; padding: 6px 12px; border-radius: 20px; border: 1px solid var(--border); background: var(--surface); color: var(--muted); cursor: pointer; transition: all 0.15s; }
   .filter-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
-  .search-input { flex: 1; min-width: 180px; padding: 8px 14px; border: 1px solid var(--border); border-radius: 8px; font-family: 'DM Sans', sans-serif; font-size: 13px; background: var(--surface); color: var(--text); outline: none; }
+  .search-input { flex: 1; min-width: 140px; padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px; font-family: 'DM Sans', sans-serif; font-size: 13px; background: var(--surface); color: var(--text); outline: none; }
   .search-input:focus { border-color: var(--accent); }
 
-  /* Table */
-  .table-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; box-shadow: var(--shadow); }
-  table { width: 100%; border-collapse: collapse; }
-  th { font-size: 11px; font-weight: 600; letter-spacing: 0.8px; text-transform: uppercase; color: var(--muted); padding: 14px 18px; text-align: left; background: #faf9f7; border-bottom: 1px solid var(--border); }
-  td { padding: 15px 18px; font-size: 14px; border-bottom: 1px solid #f0ece6; vertical-align: middle; }
+  /* Table wrapper — scrollable on mobile */
+  .table-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow-x: auto; overflow-y: visible; box-shadow: var(--shadow); -webkit-overflow-scrolling: touch; }
+  table { width: 100%; min-width: 700px; border-collapse: collapse; }
+  th { font-size: 10px; font-weight: 600; letter-spacing: 0.8px; text-transform: uppercase; color: var(--muted); padding: 12px 14px; text-align: left; background: #faf9f7; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  td { padding: 12px 14px; font-size: 13px; border-bottom: 1px solid #f0ece6; vertical-align: middle; }
   tr:last-child td { border-bottom: none; }
   tr:hover td { background: #faf9f7; }
-  .name-cell { font-weight: 600; color: var(--text); }
-  .phone-cell { color: var(--muted); font-size: 13px; }
-  .amount-cell { font-family: 'Playfair Display', serif; font-size: 15px; }
-  .status-pill { display: inline-block; font-size: 11px; font-weight: 600; padding: 3px 10px; border-radius: 20px; }
-  .actions { display: flex; gap: 6px; }
+  .name-cell { font-weight: 600; color: var(--text); font-size: 13px; }
+  .phone-cell { color: var(--muted); font-size: 12px; }
+  .amount-cell { font-family: 'Playfair Display', serif; font-size: 14px; white-space: nowrap; }
+  .status-pill { display: inline-block; font-size: 10px; font-weight: 600; padding: 3px 8px; border-radius: 20px; white-space: nowrap; }
+  .actions { display: flex; gap: 4px; flex-wrap: wrap; }
+
+  /* Borrower photos in table */
+  .borrower-photos { display: flex; gap: 4px; margin-top: 6px; }
+  .borrower-photo { width: 36px; height: 36px; border-radius: 6px; object-fit: cover; border: 1px solid var(--border); cursor: pointer; }
+
+  /* Lightbox */
+  .lightbox { position: fixed; inset: 0; background: rgba(0,0,0,0.85); display: flex; align-items: center; justify-content: center; z-index: 300; padding: 16px; }
+  .lightbox img { max-width: 100%; max-height: 90vh; border-radius: 8px; }
+  .lightbox-close { position: absolute; top: 16px; right: 20px; color: #fff; font-size: 28px; cursor: pointer; background: none; border: none; }
 
   /* Modal */
-  .overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.45); display: flex; align-items: center; justify-content: center; z-index: 100; padding: 16px; }
-  .modal { background: var(--surface); border-radius: 16px; width: 100%; max-width: 480px; box-shadow: var(--shadow-lg); overflow: hidden; }
-  .modal-header { padding: 22px 26px 16px; border-bottom: 1px solid var(--border); }
-  .modal-header h2 { font-family: 'Playfair Display', serif; font-size: 20px; color: var(--accent); }
-  .modal-body { padding: 22px 26px; display: flex; flex-direction: column; gap: 16px; }
-  .modal-footer { padding: 16px 26px 22px; display: flex; gap: 10px; justify-content: flex-end; border-top: 1px solid var(--border); }
+  .overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.45); display: flex; align-items: center; justify-content: center; z-index: 100; padding: 12px; overflow-y: auto; }
+  .modal { background: var(--surface); border-radius: 16px; width: 100%; max-width: 500px; box-shadow: var(--shadow-lg); overflow: hidden; margin: auto; }
+  .modal-header { padding: 18px 20px 14px; border-bottom: 1px solid var(--border); }
+  .modal-header h2 { font-family: 'Playfair Display', serif; font-size: 18px; color: var(--accent); }
+  .modal-body { padding: 18px 20px; display: flex; flex-direction: column; gap: 14px; max-height: 70vh; overflow-y: auto; }
+  .modal-footer { padding: 14px 20px 18px; display: flex; gap: 8px; justify-content: flex-end; border-top: 1px solid var(--border); }
 
   /* Form */
   .form-group { display: flex; flex-direction: column; gap: 5px; }
-  .form-group label { font-size: 12px; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase; color: var(--muted); }
-  .form-group input, .form-group textarea, .form-group select { padding: 10px 14px; border: 1px solid var(--border); border-radius: 8px; font-family: 'DM Sans', sans-serif; font-size: 14px; color: var(--text); background: var(--surface); outline: none; transition: border 0.15s; }
+  .form-group label { font-size: 11px; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase; color: var(--muted); }
+  .form-group input, .form-group textarea, .form-group select { padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; font-family: 'DM Sans', sans-serif; font-size: 14px; color: var(--text); background: var(--surface); outline: none; transition: border 0.15s; width: 100%; }
   .form-group input:focus, .form-group textarea:focus, .form-group select:focus { border-color: var(--accent); }
-  .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+  /* Image upload */
+  .img-upload-box { border: 2px dashed var(--border); border-radius: 8px; padding: 12px; text-align: center; cursor: pointer; transition: border 0.15s; }
+  .img-upload-box:hover { border-color: var(--accent); }
+  .img-upload-box input { display: none; }
+  .img-upload-box p { font-size: 11px; color: var(--muted); margin-top: 4px; }
+  .img-preview { width: 100%; max-height: 140px; object-fit: cover; border-radius: 6px; margin-top: 8px; }
 
   /* Login */
-  .login-wrap { display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: 24px; }
-  .login-card { background: var(--surface); border: 1px solid var(--border); border-radius: 20px; padding: 40px; width: 100%; max-width: 400px; box-shadow: var(--shadow-lg); }
-  .login-card h1 { font-family: 'Playfair Display', serif; font-size: 28px; color: var(--accent); margin-bottom: 6px; }
-  .login-card p { color: var(--muted); font-size: 14px; margin-bottom: 28px; }
-  .role-select { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 20px; }
-  .role-option { border: 2px solid var(--border); border-radius: 10px; padding: 16px 14px; cursor: pointer; transition: all 0.15s; text-align: center; }
+  .login-wrap { display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: 20px; }
+  .login-card { background: var(--surface); border: 1px solid var(--border); border-radius: 20px; padding: 32px 28px; width: 100%; max-width: 420px; box-shadow: var(--shadow-lg); }
+  .login-card h1 { font-family: 'Playfair Display', serif; font-size: 26px; color: var(--accent); margin-bottom: 4px; }
+  .login-card > p { color: var(--muted); font-size: 13px; margin-bottom: 24px; }
+  .role-select { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 18px; }
+  .role-option { border: 2px solid var(--border); border-radius: 10px; padding: 14px 12px; cursor: pointer; transition: all 0.15s; text-align: center; }
   .role-option.selected { border-color: var(--accent); background: var(--accent-light); }
-  .role-option h3 { font-size: 14px; font-weight: 600; margin-bottom: 4px; }
+  .role-option h3 { font-size: 13px; font-weight: 600; margin-bottom: 3px; }
   .role-option p { font-size: 11px; color: var(--muted); margin: 0; }
 
   /* Empty */
-  .empty { text-align: center; padding: 60px 24px; color: var(--muted); }
-  .empty h3 { font-family: 'Playfair Display', serif; font-size: 20px; margin-bottom: 6px; color: var(--text); }
+  .empty { text-align: center; padding: 48px 20px; color: var(--muted); }
+  .empty h3 { font-family: 'Playfair Display', serif; font-size: 18px; margin-bottom: 6px; color: var(--text); }
 
   /* Toast */
-  .toast { position: fixed; bottom: 24px; right: 24px; background: var(--accent); color: #fff; padding: 12px 20px; border-radius: 10px; font-size: 14px; font-weight: 500; box-shadow: var(--shadow-lg); z-index: 200; animation: slideIn 0.2s ease; }
+  .toast { position: fixed; bottom: 20px; right: 16px; left: 16px; background: var(--accent); color: #fff; padding: 12px 18px; border-radius: 10px; font-size: 13px; font-weight: 500; box-shadow: var(--shadow-lg); z-index: 200; animation: slideIn 0.2s ease; text-align: center; }
   @keyframes slideIn { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
 
-  .loading { text-align: center; padding: 60px; color: var(--muted); font-size: 14px; }
+  .loading { text-align: center; padding: 48px; color: var(--muted); font-size: 14px; }
 
-  @media (max-width: 640px) {
-    .stats { grid-template-columns: 1fr 1fr; }
-    .form-row { grid-template-columns: 1fr; }
-    th:nth-child(3), td:nth-child(3),
-    th:nth-child(4), td:nth-child(4) { display: none; }
-    .header-left h1 { font-size: 20px; }
+  /* Settings modal */
+  .settings-section { border: 1px solid var(--border); border-radius: 10px; padding: 16px; }
+  .settings-section h3 { font-size: 13px; font-weight: 600; margin-bottom: 12px; color: var(--accent); }
+
+  /* Desktop enhancements */
+  @media (min-width: 768px) {
+    .app { padding: 24px 20px 60px; }
+    .stats { grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 28px; }
+    .stat-card .value { font-size: 24px; }
+    .header-left h1 { font-size: 26px; }
+    .toast { left: auto; max-width: 360px; text-align: left; }
+    .modal-body { max-height: 75vh; }
   }
 `;
 
-// ── Login Screen ─────────────────────────────────────────────────────────────
+// ── Login Screen ──────────────────────────────────────────────────────────────
 function LoginScreen({ onLogin }) {
   const [role, setRole] = useState("viewer");
   const [pin, setPin] = useState("");
   const [error, setError] = useState("");
 
-  const ADMIN_PIN = "1234"; // Change this to your preferred PIN
-
   const handleLogin = () => {
+    const passwords = getPasswords();
     if (role === "admin") {
-      if (pin === ADMIN_PIN) {
+      if (pin === passwords.admin) {
         onLogin("admin");
       } else {
         setError("Incorrect PIN. Please try again.");
       }
     } else {
-      onLogin("viewer");
+      if (pin === passwords.viewer) {
+        onLogin("viewer");
+      } else {
+        setError("Incorrect viewer password. Please try again.");
+      }
     }
   };
 
@@ -199,44 +251,48 @@ function LoginScreen({ onLogin }) {
         <p>Professional Loan Management System</p>
 
         <div className="role-select">
-          <div
-            className={`role-option ${role === "admin" ? "selected" : ""}`}
-            onClick={() => setRole("admin")}
-          >
+          <div className={`role-option ${role === "admin" ? "selected" : ""}`} onClick={() => { setRole("admin"); setPin(""); setError(""); }}>
             <h3>Administrator</h3>
             <p>Full access — add, edit, delete, manage all loans</p>
           </div>
-          <div
-            className={`role-option ${role === "viewer" ? "selected" : ""}`}
-            onClick={() => setRole("viewer")}
-          >
+          <div className={`role-option ${role === "viewer" ? "selected" : ""}`} onClick={() => { setRole("viewer"); setPin(""); setError(""); }}>
             <h3>Viewer</h3>
             <p>View loans, mark paid, send reminders</p>
           </div>
         </div>
 
-        {role === "admin" && (
-          <div className="form-group" style={{ marginBottom: 16 }}>
-            <label>Admin PIN</label>
-            <input
-              type="password"
-              placeholder="Enter PIN"
-              value={pin}
-              onChange={(e) => { setPin(e.target.value); setError(""); }}
-              onKeyDown={(e) => e.key === "Enter" && handleLogin()}
-            />
-            {error && <span style={{ color: "var(--danger)", fontSize: 12 }}>{error}</span>}
-          </div>
-        )}
+        <div className="form-group" style={{ marginBottom: 16 }}>
+          <label>{role === "admin" ? "Admin PIN" : "Viewer Password"}</label>
+          <input
+            type="password"
+            placeholder={role === "admin" ? "Enter admin PIN" : "Enter viewer password"}
+            value={pin}
+            onChange={(e) => { setPin(e.target.value); setError(""); }}
+            onKeyDown={(e) => e.key === "Enter" && handleLogin()}
+          />
+          {error && <span style={{ color: "var(--danger)", fontSize: 12 }}>{error}</span>}
+        </div>
 
         <button className="btn btn-primary" style={{ width: "100%", justifyContent: "center" }} onClick={handleLogin}>
-          {role === "admin" ? "Login as Administrator" : "Continue as Viewer"}
+          {role === "admin" ? "Login as Administrator" : "Login as Viewer"}
         </button>
+      </div>
+    </div>
+  );
+}
 
-        {role === "admin" && (
-          <p style={{ fontSize: 11, color: "var(--muted)", marginTop: 12, textAlign: "center" }}>
-            Default PIN: 1234 — change it in the App.js file
-          </p>
+// ── Image Upload Box ──────────────────────────────────────────────────────────
+function ImageUpload({ label, preview, onChange }) {
+  const inputRef = React.useRef();
+  return (
+    <div className="form-group">
+      <label>{label}</label>
+      <div className="img-upload-box" onClick={() => inputRef.current.click()}>
+        <input ref={inputRef} type="file" accept="image/*" onChange={(e) => onChange(e.target.files?.[0])} />
+        {preview ? (
+          <img src={preview} alt="preview" className="img-preview" />
+        ) : (
+          <p>Tap to upload photo</p>
         )}
       </div>
     </div>
@@ -248,16 +304,27 @@ function LoanModal({ loan, onSave, onClose }) {
   const [form, setForm] = useState({
     borrower_name: loan?.borrower_name || "",
     phone: loan?.phone || "",
+    account_number: loan?.account_number || "",
+    residency_place: loan?.residency_place || "",
     amount: loan?.amount || "",
     loan_date: loan?.loan_date || new Date().toISOString().split("T")[0],
     due_date: loan?.due_date || "",
     notes: loan?.notes || "",
     status: loan?.status || "active",
+    image1: loan?.image1 || "",
+    image2: loan?.image2 || "",
   });
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
 
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+
+  const handleImage = (key, file) => {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (e) => set(key, e.target.result);
+    reader.readAsDataURL(file);
+  };
 
   const handleSave = async () => {
     if (!form.borrower_name.trim()) return setErr("Borrower name is required.");
@@ -283,16 +350,26 @@ function LoanModal({ loan, onSave, onClose }) {
         </div>
         <div className="modal-body">
           <div className="form-group">
-            <label>Borrower Name</label>
+            <label>Borrower Full Name</label>
             <input value={form.borrower_name} onChange={(e) => set("borrower_name", e.target.value)} placeholder="Full name" />
           </div>
           <div className="form-group">
             <label>WhatsApp Number</label>
-            <input value={form.phone} onChange={(e) => set("phone", e.target.value)} placeholder="e.g. 2348012345678" />
+            <input value={form.phone} onChange={(e) => set("phone", e.target.value)} placeholder="e.g. 0812345678 or +27812345678" />
           </div>
           <div className="form-row">
             <div className="form-group">
-              <label>Amount (NGN)</label>
+              <label>Account Number</label>
+              <input value={form.account_number} onChange={(e) => set("account_number", e.target.value)} placeholder="Bank account" />
+            </div>
+            <div className="form-group">
+              <label>Residency / Area</label>
+              <input value={form.residency_place} onChange={(e) => set("residency_place", e.target.value)} placeholder="City or area" />
+            </div>
+          </div>
+          <div className="form-row">
+            <div className="form-group">
+              <label>Amount (ZAR)</label>
               <input type="number" value={form.amount} onChange={(e) => set("amount", e.target.value)} placeholder="0" />
             </div>
             <div className="form-group">
@@ -316,6 +393,10 @@ function LoanModal({ loan, onSave, onClose }) {
           <div className="form-group">
             <label>Notes / Reference</label>
             <input value={form.notes} onChange={(e) => set("notes", e.target.value)} placeholder="Optional" />
+          </div>
+          <div className="form-row">
+            <ImageUpload label="Photo 1 — ID / Profile" preview={form.image1} onChange={(f) => handleImage("image1", f)} />
+            <ImageUpload label="Photo 2 — Residence Proof" preview={form.image2} onChange={(f) => handleImage("image2", f)} />
           </div>
           {err && <p style={{ color: "var(--danger)", fontSize: 13 }}>{err}</p>}
         </div>
@@ -346,6 +427,52 @@ function ConfirmModal({ message, onConfirm, onClose }) {
   );
 }
 
+// ── Settings Modal (Admin only) ───────────────────────────────────────────────
+function SettingsModal({ onClose, showToast }) {
+  const passwords = getPasswords();
+  const [adminPin, setAdminPin] = useState(passwords.admin);
+  const [viewerPass, setViewerPass] = useState(passwords.viewer);
+  const [saved, setSaved] = useState(false);
+
+  const handleSave = () => {
+    if (!adminPin.trim() || !viewerPass.trim()) return;
+    savePasswords({ admin: adminPin, viewer: viewerPass });
+    setSaved(true);
+    showToast("Passwords updated successfully.");
+    setTimeout(() => onClose(), 1200);
+  };
+
+  return (
+    <div className="overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="modal">
+        <div className="modal-header"><h2>Settings</h2></div>
+        <div className="modal-body">
+          <div className="settings-section">
+            <h3>Change Passwords</h3>
+            <div className="form-group" style={{ marginBottom: 12 }}>
+              <label>Admin PIN</label>
+              <input type="password" value={adminPin} onChange={(e) => setAdminPin(e.target.value)} placeholder="New admin PIN" />
+            </div>
+            <div className="form-group">
+              <label>Viewer Password</label>
+              <input type="password" value={viewerPass} onChange={(e) => setViewerPass(e.target.value)} placeholder="New viewer password" />
+            </div>
+          </div>
+          <p style={{ fontSize: 12, color: "var(--muted)" }}>
+            Passwords are saved on this device. Share the viewer password with people you want to give access to.
+          </p>
+        </div>
+        <div className="modal-footer">
+          <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
+          <button className="btn btn-primary" onClick={handleSave} disabled={saved}>
+            {saved ? "Saved!" : "Save Changes"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Main App ──────────────────────────────────────────────────────────────────
 export default function LoanTracker() {
   const [role, setRole] = useState(null);
@@ -353,10 +480,11 @@ export default function LoanTracker() {
   const [loading, setLoading] = useState(false);
   const [filter, setFilter] = useState("all");
   const [search, setSearch] = useState("");
-  const [modal, setModal] = useState(null); // null | "add" | "edit" | "confirm"
+  const [modal, setModal] = useState(null);
   const [editing, setEditing] = useState(null);
   const [confirmData, setConfirmData] = useState(null);
   const [toast, setToast] = useState("");
+  const [lightbox, setLightbox] = useState(null);
 
   const showToast = (msg) => {
     setToast(msg);
@@ -385,13 +513,11 @@ export default function LoanTracker() {
     </>
   );
 
-  // Stats
   const active = loans.filter((l) => l.status === "active");
   const paid = loans.filter((l) => l.status === "paid");
   const overdue = active.filter((l) => daysLeft(l.due_date) < 0);
   const totalOutstanding = active.reduce((s, l) => s + Number(l.amount), 0);
 
-  // Filter
   const filtered = loans.filter((l) => {
     const matchFilter =
       filter === "all" ? true :
@@ -404,7 +530,6 @@ export default function LoanTracker() {
     return matchFilter && matchSearch;
   });
 
-  // CRUD
   const saveLoan = async (form) => {
     if (editing) {
       await supabase("PATCH", `/loans?id=eq.${editing.id}`, form);
@@ -446,7 +571,8 @@ export default function LoanTracker() {
   const sendReminder = (loan) => {
     const msg = buildWhatsAppMessage(loan);
     const phone = loan.phone.replace(/\D/g, "");
-    const url = `https://wa.me/${phone}?text=${encodeURIComponent(msg)}`;
+    const normalized = phone.startsWith("27") ? phone : phone.startsWith("0") ? "27" + phone.slice(1) : phone;
+    const url = `https://wa.me/${normalized}?text=${encodeURIComponent(msg)}`;
     window.open(url, "_blank");
   };
 
@@ -463,9 +589,14 @@ export default function LoanTracker() {
           <div className="header-right">
             <span className="role-badge">{role}</span>
             {role === "admin" && (
-              <button className="btn btn-primary" onClick={() => { setEditing(null); setModal("add"); }}>
-                + Add Loan
-              </button>
+              <>
+                <button className="btn btn-primary btn-sm" onClick={() => { setEditing(null); setModal("add"); }}>
+                  + Add Loan
+                </button>
+                <button className="btn btn-ghost btn-sm" onClick={() => setModal("settings")}>
+                  Settings
+                </button>
+              </>
             )}
             <button className="btn btn-ghost btn-sm" onClick={() => setRole(null)}>Logout</button>
           </div>
@@ -500,7 +631,7 @@ export default function LoanTracker() {
           ))}
           <input
             className="search-input"
-            placeholder="Search by name or phone..."
+            placeholder="Search name or phone..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
@@ -513,16 +644,17 @@ export default function LoanTracker() {
           ) : filtered.length === 0 ? (
             <div className="empty">
               <h3>No loans found</h3>
-              <p>{role === "admin" ? "Click \"Add Loan\" to get started." : "No records match your filter."}</p>
+              <p>{role === "admin" ? `Click "+ Add Loan" to get started.` : "No records match your filter."}</p>
             </div>
           ) : (
             <table>
               <thead>
                 <tr>
                   <th>Borrower</th>
+                  <th>Account</th>
                   <th>Amount</th>
                   <th>Due Date</th>
-                  <th>Notes</th>
+                  <th>Residency</th>
                   <th>Status</th>
                   <th>Actions</th>
                 </tr>
@@ -534,15 +666,24 @@ export default function LoanTracker() {
                     <tr key={loan.id}>
                       <td>
                         <div className="name-cell">{loan.borrower_name}</div>
-                        <div className="phone-cell">{loan.phone}</div>
+                        <div className="phone-cell">{formatPhoneZA(loan.phone)}</div>
+                        {(loan.image1 || loan.image2) && (
+                          <div className="borrower-photos">
+                            {loan.image1 && (
+                              <img src={loan.image1} alt="ID" className="borrower-photo" onClick={() => setLightbox(loan.image1)} title="Click to enlarge" />
+                            )}
+                            {loan.image2 && (
+                              <img src={loan.image2} alt="Residence" className="borrower-photo" onClick={() => setLightbox(loan.image2)} title="Click to enlarge" />
+                            )}
+                          </div>
+                        )}
                       </td>
+                      <td style={{ color: "var(--muted)" }}>{loan.account_number || "—"}</td>
                       <td className="amount-cell">{fmt(loan.amount)}</td>
-                      <td style={{ fontSize: 13, color: "var(--muted)" }}>
-                        {new Date(loan.due_date).toLocaleDateString("en-NG", { day: "numeric", month: "short", year: "numeric" })}
+                      <td style={{ color: "var(--muted)", whiteSpace: "nowrap" }}>
+                        {new Date(loan.due_date).toLocaleDateString("en-ZA", { day: "numeric", month: "short", year: "numeric" })}
                       </td>
-                      <td style={{ fontSize: 13, color: "var(--muted)", maxWidth: 140, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                        {loan.notes || "—"}
-                      </td>
+                      <td style={{ color: "var(--muted)" }}>{loan.residency_place || "—"}</td>
                       <td>
                         <span className="status-pill" style={{ background: s.color + "1a", color: s.color }}>
                           {s.text}
@@ -552,22 +693,14 @@ export default function LoanTracker() {
                         <div className="actions">
                           {loan.status === "active" && (
                             <>
-                              <button className="btn btn-ghost btn-sm" onClick={() => sendReminder(loan)} title="Send WhatsApp Reminder">
-                                Remind
-                              </button>
-                              <button className="btn btn-ghost btn-sm" style={{ color: "#16a34a" }} onClick={() => markPaid(loan)}>
-                                Paid
-                              </button>
+                              <button className="btn btn-ghost btn-sm" onClick={() => sendReminder(loan)}>Remind</button>
+                              <button className="btn btn-ghost btn-sm" style={{ color: "#16a34a" }} onClick={() => markPaid(loan)}>Paid</button>
                             </>
                           )}
                           {role === "admin" && (
                             <>
-                              <button className="btn btn-ghost btn-sm" onClick={() => { setEditing(loan); setModal("edit"); }}>
-                                Edit
-                              </button>
-                              <button className="btn btn-danger btn-sm" onClick={() => deleteLoan(loan)}>
-                                Del
-                              </button>
+                              <button className="btn btn-ghost btn-sm" onClick={() => { setEditing(loan); setModal("edit"); }}>Edit</button>
+                              <button className="btn btn-danger btn-sm" onClick={() => deleteLoan(loan)}>Del</button>
                             </>
                           )}
                         </div>
@@ -581,20 +714,23 @@ export default function LoanTracker() {
         </div>
       </div>
 
+      {/* Lightbox */}
+      {lightbox && (
+        <div className="lightbox" onClick={() => setLightbox(null)}>
+          <button className="lightbox-close" onClick={() => setLightbox(null)}>✕</button>
+          <img src={lightbox} alt="Enlarged" />
+        </div>
+      )}
+
       {/* Modals */}
       {(modal === "add" || modal === "edit") && (
-        <LoanModal
-          loan={editing}
-          onSave={saveLoan}
-          onClose={() => { setModal(null); setEditing(null); }}
-        />
+        <LoanModal loan={editing} onSave={saveLoan} onClose={() => { setModal(null); setEditing(null); }} />
       )}
       {modal === "confirm" && confirmData && (
-        <ConfirmModal
-          message={confirmData.message}
-          onConfirm={async () => { await confirmData.onConfirm(); }}
-          onClose={() => setModal(null)}
-        />
+        <ConfirmModal message={confirmData.message} onConfirm={async () => { await confirmData.onConfirm(); }} onClose={() => setModal(null)} />
+      )}
+      {modal === "settings" && (
+        <SettingsModal onClose={() => setModal(null)} showToast={showToast} />
       )}
       {toast && <div className="toast">{toast}</div>}
     </>

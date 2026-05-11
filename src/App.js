@@ -498,6 +498,7 @@ export default function LoanTracker() {
     if (!role || !loans.length) return;
     const overdueLoan = loans.find(l => l.status === "active" && daysLeft(l.due_date) < -28 && !l.interest_prompted);
     if (overdueLoan && !overduePrompt) setOverduePrompt(overdueLoan);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loans, role]);
 
   if (!role) return (<><style>{css}</style><LoginScreen onLogin={setRole} /></>);

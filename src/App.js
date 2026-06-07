@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
-import { QRCodeCanvas } from "qrcode.react";
+const QRCode = require("qrcode.react");
 
 // ── Environment Variables ─────────────────────────────────────────────────────
 const SUPABASE_URL = process.env.REACT_APP_SUPABASE_URL || "";
@@ -134,138 +134,129 @@ function BarChart({ data }) {
 }
 
 // ── CSS ───────────────────────────────────────────────────────────────────────
-// ── CSS ───────────────────────────────────────────────────────────────────────
 const css = `
-  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Playfair+Display:wght@600;700&display=swap');
+  @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=DM+Sans:wght@300;400;500;600&display=swap');
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   :root {
-    --bg: #0a0a0f; --surface: #12121a; --surface2: #1a1a26; --border: #2a2a3a; --border2: #333348;
-    --text: #e8e8f0; --muted: #6b6b8a; --accent: #c9a84c; --accent-dark: #a8872e; --accent-light: #1e1a0f;
-    --danger: #ef4444; --danger-light: #1a0a0a; --success: #22c55e; --radius: 10px;
-    --shadow: 0 2px 16px rgba(0,0,0,0.4); --shadow-lg: 0 8px 40px rgba(0,0,0,0.6);
+    --bg: #f5f3ef; --surface: #fff; --border: #e2ddd6; --text: #1a1714; --muted: #7a746c;
+    --accent: #1a3a2a; --accent-light: #e8f0eb; --danger: #7f1d1d; --danger-light: #fef2f2;
+    --gold: #92722a; --blue: #1d4ed8; --radius: 12px;
+    --shadow: 0 2px 12px rgba(0,0,0,0.07); --shadow-lg: 0 8px 32px rgba(0,0,0,0.12);
   }
   html { -webkit-text-size-adjust: 100%; }
-  body { background: var(--bg); font-family: 'Inter', sans-serif; color: var(--text); min-height: 100vh; overflow-x: hidden; }
+  body { background: var(--bg); font-family: 'DM Sans', sans-serif; color: var(--text); min-height: 100vh; overflow-x: hidden; }
   .app { width: 100%; max-width: 1200px; margin: 0 auto; padding: 16px 12px 80px; }
-  .header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 24px; padding-bottom: 18px; border-bottom: 1px solid var(--border); gap: 12px; flex-wrap: wrap; }
-  .header-left h1 { font-family: 'Playfair Display', serif; font-size: 22px; color: var(--accent); letter-spacing: 0.5px; }
-  .header-left p { font-size: 11px; color: var(--muted); margin-top: 3px; letter-spacing: 0.5px; text-transform: uppercase; }
+  .header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 20px; padding-bottom: 16px; border-bottom: 1px solid var(--border); gap: 12px; flex-wrap: wrap; }
+  .header-left h1 { font-family: 'Playfair Display', serif; font-size: 22px; color: var(--accent); }
+  .header-left p { font-size: 12px; color: var(--muted); margin-top: 2px; }
   .header-right { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-  .role-badge { font-size: 9px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; padding: 4px 12px; border-radius: 20px; background: var(--accent-light); color: var(--accent); border: 1px solid var(--accent-dark); }
-  .tabs { display: flex; gap: 0; margin-bottom: 24px; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
-  .tab { padding: 12px 18px; font-size: 12px; font-weight: 500; color: var(--muted); cursor: pointer; border: none; background: none; border-bottom: 2px solid transparent; margin-bottom: -1px; transition: all 0.15s; white-space: nowrap; font-family: 'Inter', sans-serif; letter-spacing: 0.3px; }
-  .tab:hover { color: var(--text); }
+  .role-badge { font-size: 10px; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; padding: 4px 10px; border-radius: 20px; background: var(--accent-light); color: var(--accent); }
+  .badge-red { background: #fef2f2; color: #7f1d1d; }
+  .tabs { display: flex; gap: 2px; margin-bottom: 20px; border-bottom: 2px solid var(--border); flex-wrap: wrap; }
+  .tab { padding: 10px 16px; font-size: 13px; font-weight: 500; color: var(--muted); cursor: pointer; border: none; background: none; border-bottom: 2px solid transparent; margin-bottom: -2px; transition: all 0.15s; white-space: nowrap; font-family: 'DM Sans', sans-serif; position: relative; }
   .tab.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
-  .tab-badge { display: inline-flex; align-items: center; justify-content: center; background: var(--danger); color: #fff; border-radius: 50%; width: 16px; height: 16px; font-size: 9px; font-weight: 700; margin-left: 6px; vertical-align: middle; }
-  .btn { display: inline-flex; align-items: center; gap: 6px; font-family: 'Inter', sans-serif; font-size: 12px; font-weight: 600; padding: 9px 16px; border-radius: 8px; border: none; cursor: pointer; transition: all 0.15s; white-space: nowrap; letter-spacing: 0.3px; }
-  .btn-primary { background: var(--accent); color: #0a0a0f; }
-  .btn-primary:hover { background: var(--accent-dark); }
-  .btn-ghost { background: transparent; color: var(--muted); border: 1px solid var(--border2); }
-  .btn-ghost:hover { background: var(--surface2); color: var(--text); border-color: var(--muted); }
-  .btn-danger { background: var(--danger-light); color: var(--danger); border: 1px solid #3a1a1a; }
-  .btn-danger:hover { background: #2a1010; }
-  .btn-warning { background: #1a1200; color: #f59e0b; border: 1px solid #3a2a00; }
-  .btn-sm { padding: 5px 10px; font-size: 11px; }
-  .stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 24px; }
-  .stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px; position: relative; }
-  .stat-card .label { font-size: 9px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; }
-  .stat-card .value { font-family: 'Playfair Display', serif; font-size: 22px; color: var(--text); }
+  .tab-badge { position: absolute; top: -8px; right: 8px; background: #dc2626; color: #fff; border-radius: 50%; width: 18px; height: 18px; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 600; }
+  .btn { display: inline-flex; align-items: center; gap: 6px; font-family: 'DM Sans', sans-serif; font-size: 13px; font-weight: 500; padding: 9px 16px; border-radius: 8px; border: none; cursor: pointer; transition: all 0.15s; white-space: nowrap; }
+  .btn-primary { background: var(--accent); color: #fff; }
+  .btn-primary:hover { background: #0f2418; }
+  .btn-ghost { background: transparent; color: var(--muted); border: 1px solid var(--border); }
+  .btn-ghost:hover { background: var(--border); color: var(--text); }
+  .btn-danger { background: var(--danger-light); color: var(--danger); border: 1px solid #fecaca; }
+  .btn-danger:hover { background: #fee2e2; }
+  .btn-warning { background: #fff7ed; color: #92400e; border: 1px solid #fed7aa; }
+  .btn-sm { padding: 6px 10px; font-size: 12px; }
+  .stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 20px; }
+  .stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; position: relative; }
+  .stat-card .label { font-size: 10px; font-weight: 600; letter-spacing: 0.8px; text-transform: uppercase; color: var(--muted); margin-bottom: 4px; }
+  .stat-card .value { font-family: 'Playfair Display', serif; font-size: 20px; }
   .stat-card .sub { font-size: 11px; color: var(--muted); margin-top: 4px; }
-  .stat-card .edit-btn { position: absolute; top: 10px; right: 10px; font-size: 11px; color: var(--muted); background: none; border: none; cursor: pointer; padding: 2px 8px; border-radius: 4px; font-family: 'Inter', sans-serif; }
-  .stat-card .edit-btn:hover { background: var(--surface2); color: var(--text); }
-  .fin-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 24px; }
+  .fin-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 20px; }
   .toolbar { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; align-items: center; }
-  .filter-btn { font-size: 11px; font-weight: 600; padding: 6px 14px; border-radius: 20px; border: 1px solid var(--border2); background: var(--surface); color: var(--muted); cursor: pointer; transition: all 0.15s; letter-spacing: 0.3px; }
-  .filter-btn.active { background: var(--accent); color: #0a0a0f; border-color: var(--accent); }
-  .filter-btn:hover:not(.active) { border-color: var(--muted); color: var(--text); }
-  .search-input { flex: 1; min-width: 140px; padding: 8px 14px; border: 1px solid var(--border2); border-radius: 8px; font-family: 'Inter', sans-serif; font-size: 13px; background: var(--surface); color: var(--text); outline: none; }
+  .filter-btn { font-size: 12px; font-weight: 500; padding: 6px 12px; border-radius: 20px; border: 1px solid var(--border); background: var(--surface); color: var(--muted); cursor: pointer; transition: all 0.15s; }
+  .filter-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .search-input { flex: 1; min-width: 140px; padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px; font-family: 'DM Sans', sans-serif; font-size: 13px; background: var(--surface); color: var(--text); outline: none; }
   .search-input:focus { border-color: var(--accent); }
-  .search-input::placeholder { color: var(--muted); }
   .table-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow-x: auto; box-shadow: var(--shadow); -webkit-overflow-scrolling: touch; }
   table { width: 100%; min-width: 680px; border-collapse: collapse; }
-  th { font-size: 9px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase; color: var(--muted); padding: 13px 16px; text-align: left; background: var(--surface2); border-bottom: 1px solid var(--border); white-space: nowrap; }
-  td { padding: 13px 16px; font-size: 13px; border-bottom: 1px solid var(--border); vertical-align: middle; color: var(--text); }
+  th { font-size: 10px; font-weight: 600; letter-spacing: 0.8px; text-transform: uppercase; color: var(--muted); padding: 12px 14px; text-align: left; background: #faf9f7; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  td { padding: 12px 14px; font-size: 13px; border-bottom: 1px solid #f0ece6; vertical-align: middle; }
   tr:last-child td { border-bottom: none; }
-  tr:hover td { background: var(--surface2); }
-  .name-cell { font-weight: 600; font-size: 13px; color: var(--text); }
-  .phone-cell { color: var(--muted); font-size: 12px; margin-top: 2px; }
-  .amount-cell { font-family: 'Playfair Display', serif; font-size: 14px; white-space: nowrap; color: var(--accent); }
-  .status-pill { display: inline-block; font-size: 9px; font-weight: 700; padding: 3px 10px; border-radius: 20px; white-space: nowrap; letter-spacing: 0.5px; text-transform: uppercase; }
+  tr:hover td { background: #faf9f7; }
+  .name-cell { font-weight: 600; font-size: 13px; }
+  .phone-cell { color: var(--muted); font-size: 12px; }
+  .amount-cell { font-family: 'Playfair Display', serif; font-size: 14px; white-space: nowrap; }
+  .status-pill { display: inline-block; font-size: 10px; font-weight: 600; padding: 3px 8px; border-radius: 20px; white-space: nowrap; }
   .actions { display: flex; gap: 4px; flex-wrap: wrap; }
   .borrower-photos { display: flex; gap: 4px; margin-top: 6px; }
-  .borrower-photo { width: 34px; height: 34px; border-radius: 6px; object-fit: cover; border: 1px solid var(--border2); cursor: pointer; }
-  .section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+  .borrower-photo { width: 34px; height: 34px; border-radius: 6px; object-fit: cover; border: 1px solid var(--border); cursor: pointer; }
+  .section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
   .section-header h2 { font-family: 'Playfair Display', serif; font-size: 18px; color: var(--accent); }
   .chart-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; }
-  .chart-card h3 { font-size: 9px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 1.2px; margin-bottom: 16px; }
+  .chart-card h3 { font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 16px; }
   .charts-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 20px; }
-  .profit-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 22px; margin-bottom: 20px; }
-  .profit-card h2 { font-family: 'Playfair Display', serif; font-size: 18px; color: var(--accent); margin-bottom: 18px; }
-  .profit-row { display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid var(--border); }
+  .profit-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; margin-bottom: 20px; }
+  .profit-card h2 { font-family: 'Playfair Display', serif; font-size: 18px; color: var(--accent); margin-bottom: 16px; }
+  .profit-row { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--border); }
   .profit-row:last-child { border-bottom: none; }
-  .profit-row .plabel { font-size: 12px; color: var(--muted); }
-  .profit-row .pval { font-family: 'Playfair Display', serif; font-size: 16px; font-weight: 600; color: var(--text); }
-  .rate-controls { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 16px; padding: 14px; background: var(--accent-light); border-radius: 10px; border: 1px solid #2a2000; }
-  .rate-controls label { font-size: 11px; font-weight: 600; color: var(--accent); }
-  .rate-controls input, .rate-controls select { padding: 6px 10px; border: 1px solid var(--border2); border-radius: 6px; font-family: 'Inter', sans-serif; font-size: 13px; background: var(--surface); color: var(--text); }
-  .overdue-prompt { background: #1a0e00; border: 1px solid #3a2000; border-radius: 10px; padding: 14px; margin-bottom: 16px; }
-  .overdue-prompt strong { color: #f59e0b; display: block; margin-bottom: 6px; font-size: 13px; }
-  .overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.75); display: flex; align-items: center; justify-content: center; z-index: 100; padding: 12px; overflow-y: auto; backdrop-filter: blur(2px); }
-  .modal { background: var(--surface); border: 1px solid var(--border2); border-radius: 14px; width: 100%; max-width: 500px; box-shadow: var(--shadow-lg); overflow: hidden; margin: auto; }
-  .modal-header { padding: 18px 22px 14px; border-bottom: 1px solid var(--border); background: var(--surface2); }
+  .profit-row .plabel { font-size: 13px; color: var(--muted); }
+  .profit-row .pval { font-family: 'Playfair Display', serif; font-size: 16px; font-weight: 600; }
+  .rate-controls { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 16px; padding: 14px; background: var(--accent-light); border-radius: 10px; }
+  .rate-controls label { font-size: 12px; font-weight: 600; color: var(--accent); }
+  .rate-controls input, .rate-controls select { padding: 6px 10px; border: 1px solid var(--border); border-radius: 6px; font-family: 'DM Sans', sans-serif; font-size: 13px; background: #fff; }
+  .overdue-prompt { background: #fff7ed; border: 1px solid #fed7aa; border-radius: 10px; padding: 14px; margin-bottom: 16px; }
+  .overdue-prompt strong { color: #92400e; display: block; margin-bottom: 6px; font-size: 14px; }
+  .overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.45); display: flex; align-items: center; justify-content: center; z-index: 100; padding: 12px; overflow-y: auto; }
+  .modal { background: var(--surface); border-radius: 16px; width: 100%; max-width: 500px; box-shadow: var(--shadow-lg); overflow: hidden; margin: auto; }
+  .modal-header { padding: 18px 20px 14px; border-bottom: 1px solid var(--border); }
   .modal-header h2 { font-family: 'Playfair Display', serif; font-size: 18px; color: var(--accent); }
-  .modal-body { padding: 20px 22px; display: flex; flex-direction: column; gap: 14px; max-height: 72vh; overflow-y: auto; }
-  .modal-footer { padding: 14px 22px 18px; display: flex; gap: 8px; justify-content: flex-end; border-top: 1px solid var(--border); background: var(--surface2); }
-  .form-group { display: flex; flex-direction: column; gap: 6px; }
-  .form-group label { font-size: 10px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: var(--muted); }
-  .form-group input, .form-group select { padding: 10px 13px; border: 1px solid var(--border2); border-radius: 8px; font-family: 'Inter', sans-serif; font-size: 13px; color: var(--text); background: var(--surface2); outline: none; transition: border 0.15s; width: 100%; }
+  .modal-body { padding: 18px 20px; display: flex; flex-direction: column; gap: 14px; max-height: 72vh; overflow-y: auto; }
+  .modal-footer { padding: 14px 20px 18px; display: flex; gap: 8px; justify-content: flex-end; border-top: 1px solid var(--border); }
+  .form-group { display: flex; flex-direction: column; gap: 5px; }
+  .form-group label { font-size: 11px; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase; color: var(--muted); }
+  .form-group input, .form-group select { padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; font-family: 'DM Sans', sans-serif; font-size: 14px; color: var(--text); background: #fff; outline: none; transition: border 0.15s; width: 100%; }
   .form-group input:focus, .form-group select:focus { border-color: var(--accent); }
-  .form-group input::placeholder { color: var(--muted); }
-  .form-group select option { background: var(--surface2); }
   .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-  .img-upload-box { border: 2px dashed var(--border2); border-radius: 8px; padding: 14px; text-align: center; cursor: pointer; transition: border 0.15s; background: var(--surface2); }
+  .img-upload-box { border: 2px dashed var(--border); border-radius: 8px; padding: 12px; text-align: center; cursor: pointer; transition: border 0.15s; }
   .img-upload-box:hover { border-color: var(--accent); }
   .img-upload-box p { font-size: 11px; color: var(--muted); margin-top: 4px; }
   .img-preview { width: 100%; max-height: 130px; object-fit: cover; border-radius: 6px; margin-top: 8px; }
-  .login-wrap { display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: 20px; background: var(--bg); }
-  .login-card { background: var(--surface); border: 1px solid var(--border2); border-radius: 16px; padding: 36px 30px; width: 100%; max-width: 420px; box-shadow: var(--shadow-lg); }
-  .login-card h1 { font-family: 'Playfair Display', serif; font-size: 28px; color: var(--accent); margin-bottom: 4px; }
-  .login-card > p { color: var(--muted); font-size: 12px; margin-bottom: 28px; letter-spacing: 0.3px; }
-  .role-select { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 20px; }
-  .role-option { border: 1px solid var(--border2); border-radius: 10px; padding: 16px 12px; cursor: pointer; transition: all 0.15s; text-align: center; background: var(--surface2); }
-  .role-option:hover { border-color: var(--muted); }
+  .login-wrap { display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: 20px; }
+  .login-card { background: var(--surface); border: 1px solid var(--border); border-radius: 20px; padding: 32px 28px; width: 100%; max-width: 420px; box-shadow: var(--shadow-lg); }
+  .login-card h1 { font-family: 'Playfair Display', serif; font-size: 26px; color: var(--accent); margin-bottom: 4px; }
+  .login-card > p { color: var(--muted); font-size: 13px; margin-bottom: 24px; }
+  .role-select { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 18px; }
+  .role-option { border: 2px solid var(--border); border-radius: 10px; padding: 14px 12px; cursor: pointer; transition: all 0.15s; text-align: center; }
   .role-option.selected { border-color: var(--accent); background: var(--accent-light); }
-  .role-option h3 { font-size: 13px; font-weight: 600; margin-bottom: 3px; color: var(--text); }
+  .role-option h3 { font-size: 13px; font-weight: 600; margin-bottom: 3px; }
   .role-option p { font-size: 11px; color: var(--muted); margin: 0; }
-  .lightbox { position: fixed; inset: 0; background: rgba(0,0,0,0.95); display: flex; align-items: center; justify-content: center; z-index: 300; padding: 16px; }
+  .lightbox { position: fixed; inset: 0; background: rgba(0,0,0,0.88); display: flex; align-items: center; justify-content: center; z-index: 300; padding: 16px; }
   .lightbox img { max-width: 100%; max-height: 90vh; border-radius: 8px; }
   .lightbox-close { position: absolute; top: 16px; right: 20px; color: #fff; font-size: 28px; cursor: pointer; background: none; border: none; }
-  .empty { text-align: center; padding: 56px 20px; color: var(--muted); }
+  .empty { text-align: center; padding: 48px 20px; color: var(--muted); }
   .empty h3 { font-family: 'Playfair Display', serif; font-size: 18px; margin-bottom: 6px; color: var(--text); }
-  .toast { position: fixed; bottom: 20px; right: 16px; left: 16px; background: var(--accent); color: #0a0a0f; padding: 13px 20px; border-radius: 10px; font-size: 13px; font-weight: 700; box-shadow: var(--shadow-lg); z-index: 200; animation: slideIn 0.2s ease; text-align: center; }
+  .toast { position: fixed; bottom: 20px; right: 16px; left: 16px; background: var(--accent); color: #fff; padding: 12px 18px; border-radius: 10px; font-size: 13px; font-weight: 500; box-shadow: var(--shadow-lg); z-index: 200; animation: slideIn 0.2s ease; text-align: center; }
   @keyframes slideIn { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
-  .loading { text-align: center; padding: 56px; color: var(--muted); font-size: 13px; }
-  .info-text { font-size: 11px; color: var(--muted); }
-  .net-card { background: var(--accent-light); border: 1px solid var(--accent-dark); border-radius: var(--radius); padding: 16px; }
-  .net-card .label { font-size: 9px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; color: var(--accent); margin-bottom: 8px; }
-  .net-card .value { font-family: 'Playfair Display', serif; font-size: 22px; color: var(--accent); }
+  .loading { text-align: center; padding: 48px; color: var(--muted); font-size: 14px; }
+  .info-text { font-size: 12px; color: var(--muted); }
+  .net-card { background: var(--accent-light); border: 2px solid var(--accent); border-radius: var(--radius); padding: 16px; }
+  .net-card .label { font-size: 10px; font-weight: 600; letter-spacing: 0.8px; text-transform: uppercase; color: var(--accent); margin-bottom: 4px; }
+  .net-card .value { font-family: 'Playfair Display', serif; font-size: 24px; color: var(--accent); }
   .net-card .sub { font-size: 11px; color: var(--accent); margin-top: 4px; opacity: 0.7; }
-  .app-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px; margin-bottom: 14px; }
+  .app-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; margin-bottom: 16px; }
   .app-photos { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 12px; }
-  .app-photo { width: 100%; aspect-ratio: 3/4; border-radius: 8px; object-fit: cover; border: 1px solid var(--border2); cursor: pointer; }
+  .app-photo { width: 100%; aspect-ratio: 3/4; border-radius: 8px; object-fit: cover; border: 1px solid var(--border); }
   .app-actions { display: flex; gap: 8px; margin-top: 14px; }
   @media (min-width: 768px) {
-    .app { padding: 28px 24px 80px; }
+    .app { padding: 24px 20px 80px; }
     .stats { grid-template-columns: repeat(4, 1fr); }
     .fin-grid { grid-template-columns: repeat(4, 1fr); }
-    .stat-card .value { font-size: 24px; }
+    .stat-card .value { font-size: 22px; }
     .header-left h1 { font-size: 26px; }
     .toast { left: auto; max-width: 380px; text-align: left; }
     .modal-body { max-height: 75vh; }
   }
   @media (max-width: 480px) {
     .charts-grid { grid-template-columns: 1fr; }
-    .form-row { grid-template-columns: 1fr; }
   }
 `;
 
@@ -306,6 +297,27 @@ function LoginScreen({ onLogin }) {
   );
 }
 
+// ── Image Upload Component ────────────────────────────────────────────────────
+function ImageUpload({ label, preview, onChange }) {
+  const ref = useRef();
+  return (
+    <div className="form-group">
+      <label>{label}</label>
+      <div className="img-upload-box" onClick={() => ref.current.click()}>
+        <input ref={ref} type="file" accept="image/*" style={{ display: "none" }} onChange={(e) => {
+          const file = e.target.files?.[0];
+          if (file) {
+            const reader = new FileReader();
+            reader.onload = (e) => onChange(e.target.result);
+            reader.readAsDataURL(file);
+          }
+        }} />
+        {preview ? <img src={preview} alt="preview" className="img-preview" /> : <p>📷 Tap to upload</p>}
+      </div>
+    </div>
+  );
+}
+
 // ── QR Code Modal ─────────────────────────────────────────────────────────────
 function QRModal({ onClose }) {
   const qrRef = useRef();
@@ -320,7 +332,7 @@ function QRModal({ onClose }) {
         <div className="modal-body" style={{ alignItems: "center" }}>
           <p style={{ fontSize: 12, color: "var(--muted)" }}>Share this QR code with clients to apply for loans</p>
           <div ref={qrRef} style={{ padding: 16, background: "#fff", borderRadius: 12 }}>
-            <QRCodeCanvas value={applURL} size={200} level="H" />
+            <QRCode value={applURL} size={200} level="H" />
           </div>
           <p style={{ fontSize: 11, color: "var(--muted)", textAlign: "center" }}>URL: {applURL}</p>
           <button className="btn btn-primary" style={{ width: "100%" }} onClick={() => {
@@ -341,109 +353,57 @@ function QRModal({ onClose }) {
   );
 }
 
-// ── Image compression + Supabase Storage upload ───────────────────────────────
-function compressImage(file, maxPx = 800, quality = 0.72) {
-  return new Promise((resolve) => {
-    const img = new Image();
-    const url = URL.createObjectURL(file);
-    img.onload = () => {
-      URL.revokeObjectURL(url);
-      const scale  = Math.min(1, maxPx / Math.max(img.width, img.height));
-      const canvas = document.createElement("canvas");
-      canvas.width  = Math.round(img.width  * scale);
-      canvas.height = Math.round(img.height * scale);
-      canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
-      canvas.toBlob(
-        (blob) => resolve(new File([blob], "photo.jpg", { type: "image/jpeg" })),
-        "image/jpeg", quality
-      );
-    };
-    img.src = url;
-  });
-}
-
-async function uploadImage(file, folder, slot) {
-  const compressed = await compressImage(file);
-  const path   = `${folder}/${slot}-${Date.now()}.jpg`;
-  const bucket = "loan-images";
-  const res = await fetch(`${SUPABASE_URL}/storage/v1/object/${bucket}/${path}`, {
-    method: "POST",
-    headers: {
-      apikey: SUPABASE_KEY,
-      Authorization: `Bearer ${SUPABASE_KEY}`,
-      "Content-Type": "image/jpeg",
-    },
-    body: compressed,
-  });
-  if (!res.ok) throw new Error("Upload failed: " + (await res.text()));
-  return `${SUPABASE_URL}/storage/v1/object/public/${bucket}/${path}`;
-}
-
-// ── Image Upload — no capture attr (prevents mobile page-loss bug) ────────────
-function ImageUpload({ label, preview, onChange }) {
-  const ref = useRef();
-  return (
-    <div className="form-group" style={{ marginBottom: 14 }}>
-      <label>{label}</label>
-      <div className="img-upload-box" onClick={() => ref.current.click()}>
-        <input
-          ref={ref}
-          type="file"
-          accept="image/*"
-          style={{ display: "none" }}
-          onChange={(e) => {
-            const file = e.target.files?.[0];
-            if (file) onChange(file);
-          }}
-        />
-        {preview
-          ? <img src={preview} alt="preview" className="img-preview" />
-          : <p>📷 Tap to take or upload photo</p>}
-      </div>
-    </div>
-  );
-}
-
-// ── Application Form (Client QR) — PUBLIC, no login ──────────────────────────
-function ApplicationForm() {
+// ── Application Form (Client QR) ──────────────────────────────────────────────
+function ApplicationForm({ onSuccess }) {
   const [form, setForm] = useState({
-    borrower_name: "", phone: "", residency_place: "",
-    bank_name: "", account_number: "", amount: "", due_date: "",
+    borrower_name: "",
+    phone: "",
+    residency_place: "",
+    bank_name: "",
+    account_number: "",
+    amount: "",
+    due_date: "",
   });
-  const [file1, setFile1]     = useState(null);
-  const [file2, setFile2]     = useState(null);
-  const [prev1, setPrev1]     = useState("");
-  const [prev2, setPrev2]     = useState("");
+  const [image1, setImage1] = useState(null);
+  const [image2, setImage2] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [error, setError]     = useState("");
+  const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
-
-  const handleImg = (slot, file) => {
-    const url = URL.createObjectURL(file);
-    if (slot === 1) { setFile1(file); setPrev1(url); }
-    else            { setFile2(file); setPrev2(url); }
-  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!form.borrower_name || !form.phone || !form.amount || !form.due_date)
-      return setError("Please fill in all required fields.");
-    if (!file1 || !file2)
-      return setError("Please upload both your selfie and student card photo.");
-    setLoading(true); setError("");
+    if (!form.borrower_name || !form.phone || !form.amount || !form.due_date) {
+      setError("Please fill all required fields");
+      return;
+    }
+    if (!image1 || !image2) {
+      setError("Please upload both selfie and document photos");
+      return;
+    }
+
+    setLoading(true);
     try {
-      const folder = `apply-${Date.now()}`;
-      const [url1, url2] = await Promise.all([
-        uploadImage(file1, folder, "selfie"),
-        uploadImage(file2, folder, "card"),
-      ]);
-      await sb("POST", "/pending_applications", {
-        ...form, amount: Number(form.amount),
-        image1: url1, image2: url2, status: "pending",
-      });
-      setSuccess(true); // show success in-page — no redirect, no page reload
+      const application = {
+        borrower_name: form.borrower_name,
+        phone: form.phone,
+        residency_place: form.residency_place,
+        bank_name: form.bank_name,
+        account_number: form.account_number,
+        amount: Number(form.amount),
+        due_date: form.due_date,
+        image1,
+        image2,
+        status: "pending",
+      };
+      
+      await sb("POST", "/pending_applications", application);
+      setError("");
+      setSuccess(true);
+      setTimeout(() => {
+        window.location.href = "/";
+      }, 2000);
     } catch (err) {
-      setError("Submission failed: " + err.message);
+      setError("Failed to submit application: " + err.message);
     }
     setLoading(false);
   };
@@ -452,54 +412,67 @@ function ApplicationForm() {
     return (
       <div style={{ background: "var(--bg)", minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: "20px" }}>
         <div style={{ textAlign: "center", maxWidth: 400 }}>
-          <div style={{ fontSize: 56, marginBottom: 16 }}>✅</div>
+          <div style={{ fontSize: 48, marginBottom: 16 }}>✅</div>
           <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: 24, color: "var(--accent)", marginBottom: 8 }}>Application Submitted!</h1>
-          <p style={{ color: "var(--muted)" }}>Your loan application has been received. We will contact you on WhatsApp shortly.</p>
+          <p style={{ color: "var(--muted)", marginBottom: 16 }}>Your loan application has been received. You will be contacted soon.</p>
+          <p style={{ fontSize: 12, color: "var(--muted)" }}>Redirecting...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div style={{ background: "var(--bg)", minHeight: "100vh", padding: "24px 16px" }}>
-      <div style={{ maxWidth: 500, margin: "0 auto" }}>
-        <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: 26, color: "var(--accent)", marginBottom: 4 }}>Loan Application</h1>
-        <p style={{ color: "var(--muted)", fontSize: 12, marginBottom: 24, letterSpacing: "0.3px" }}>Fill in your details to apply for a loan</p>
-        <form onSubmit={handleSubmit} style={{ background: "var(--surface)", borderRadius: "var(--radius)", padding: "22px 20px", border: "1px solid var(--border)" }}>
-          <div className="form-group" style={{ marginBottom: 14 }}>
+    <div style={{ background: "var(--bg)", minHeight: "100vh", padding: "20px 16px" }}>
+      <div className="app" style={{ maxWidth: 500 }}>
+        <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: 26, color: "var(--accent)", marginBottom: 8 }}>Loan Application</h1>
+        <p style={{ color: "var(--muted)", fontSize: 13, marginBottom: 24 }}>Submit your details to apply for a loan</p>
+
+        <form onSubmit={handleSubmit} style={{ background: "var(--surface)", borderRadius: "var(--radius)", padding: 20, border: "1px solid var(--border)" }}>
+          <div className="form-group" style={{ marginBottom: 16 }}>
             <label>Full Name *</label>
-            <input type="text" placeholder="Your full name" value={form.borrower_name} onChange={(e) => setForm({...form, borrower_name: e.target.value})} />
+            <input type="text" placeholder="Enter your full name" value={form.borrower_name} onChange={(e) => setForm({...form, borrower_name: e.target.value})} />
           </div>
-          <div className="form-group" style={{ marginBottom: 14 }}>
-            <label>WhatsApp Number *</label>
-            <input type="tel" placeholder="0812345678" value={form.phone} onChange={(e) => setForm({...form, phone: e.target.value})} />
+
+          <div className="form-group" style={{ marginBottom: 16 }}>
+            <label>Phone *</label>
+            <input type="tel" placeholder="+27 123 456 7890" value={form.phone} onChange={(e) => setForm({...form, phone: e.target.value})} />
           </div>
-          <div className="form-group" style={{ marginBottom: 14 }}>
-            <label>Residency / Area</label>
-            <input type="text" placeholder="Your town or area" value={form.residency_place} onChange={(e) => setForm({...form, residency_place: e.target.value})} />
+
+          <div className="form-group" style={{ marginBottom: 16 }}>
+            <label>Residency Place</label>
+            <input type="text" placeholder="Your address" value={form.residency_place} onChange={(e) => setForm({...form, residency_place: e.target.value})} />
           </div>
-          <div className="form-group" style={{ marginBottom: 14 }}>
+
+          <div className="form-group" style={{ marginBottom: 16 }}>
             <label>Bank Name</label>
-            <input type="text" placeholder="e.g. Capitec, FNB" value={form.bank_name} onChange={(e) => setForm({...form, bank_name: e.target.value})} />
+            <input type="text" placeholder="E.g., First National Bank" value={form.bank_name} onChange={(e) => setForm({...form, bank_name: e.target.value})} />
           </div>
-          <div className="form-group" style={{ marginBottom: 14 }}>
+
+          <div className="form-group" style={{ marginBottom: 16 }}>
             <label>Account Number</label>
-            <input type="text" placeholder="Your bank account number" value={form.account_number} onChange={(e) => setForm({...form, account_number: e.target.value})} />
+            <input type="text" placeholder="Your account number" value={form.account_number} onChange={(e) => setForm({...form, account_number: e.target.value})} />
           </div>
-          <div className="form-group" style={{ marginBottom: 14 }}>
+
+          <div className="form-group" style={{ marginBottom: 16 }}>
             <label>Loan Amount (ZAR) *</label>
             <input type="number" placeholder="5000" value={form.amount} onChange={(e) => setForm({...form, amount: e.target.value})} />
           </div>
-          <div className="form-group" style={{ marginBottom: 14 }}>
+
+          <div className="form-group" style={{ marginBottom: 16 }}>
             <label>Repayment Date *</label>
             <input type="date" value={form.due_date} onChange={(e) => setForm({...form, due_date: e.target.value})} />
           </div>
-          <ImageUpload label="📸 Selfie Photo *"       preview={prev1} onChange={(f) => handleImg(1, f)} />
-          <ImageUpload label="🪪 Student Card Photo *" preview={prev2} onChange={(f) => handleImg(2, f)} />
-          {error && <div style={{ color: "var(--danger)", fontSize: 12, marginTop: 8, padding: 12, background: "var(--danger-light)", borderRadius: 8 }}>{error}</div>}
-          <button type="submit" className="btn btn-primary" style={{ width: "100%", justifyContent: "center", marginTop: 20 }} disabled={loading}>
-            {loading ? "Uploading & Submitting…" : "Submit Application"}
-          </button>
+
+          <ImageUpload label="📸 Selfie Photo *" preview={image1} onChange={setImage1} />
+          
+          <ImageUpload label="📋 Document Photo (Student Card/ID) *" preview={image2} onChange={setImage2} />
+
+          {error && <div style={{ color: "var(--danger)", fontSize: 12, marginTop: 16, padding: 12, background: "var(--danger-light)", borderRadius: 8 }}>{error}</div>}
+
+          <div style={{ display: "flex", gap: 8, marginTop: 24 }}>
+            <button type="button" className="btn btn-ghost" style={{ flex: 1 }} onClick={() => window.history.back()}>Cancel</button>
+            <button type="submit" className="btn btn-primary" style={{ flex: 1 }} disabled={loading}>{loading ? "Submitting..." : "Submit Application"}</button>
+          </div>
         </form>
       </div>
     </div>
@@ -977,12 +950,12 @@ function MainApp({ role, onLogout }) {
             <table>
               <thead>
                 <tr>
-                  <th>Borrower</th>
-                  <th>Phone</th>
-                  <th>Amount</th>
-                  <th>Due Date</th>
-                  <th>Status</th>
-                  <th>Actions</th>
+                  <th style={{ minWidth: 160 }}>Borrower</th>
+                  <th style={{ minWidth: 120 }}>Residence</th>
+                  <th style={{ minWidth: 100 }}>Amount</th>
+                  <th style={{ minWidth: 100 }}>Due Date</th>
+                  <th style={{ minWidth: 90 }}>Status</th>
+                  <th style={{ minWidth: 150 }}>Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -990,10 +963,29 @@ function MainApp({ role, onLogout }) {
                   <tr><td colSpan="6" style={{ textAlign: "center", color: "var(--muted)", padding: "32px" }}>No loans found</td></tr>
                 ) : filtered.map(l => (
                   <tr key={l.id}>
-                    <td className="name-cell">{l.borrower_name}</td>
-                    <td className="phone-cell">{formatPhoneZA(l.phone)}</td>
+                    <td>
+                      <div className="name-cell">{l.borrower_name}</div>
+                      <div className="phone-cell">{formatPhoneZA(l.phone)}</div>
+                      {(l.image1 || l.image2) && (
+                        <div className="borrower-photos">
+                          {l.image1 && (
+                            <div style={{ textAlign: "center" }}>
+                              <img src={l.image1} alt="Selfie" className="borrower-photo" onClick={() => setLightbox(l.image1)} />
+                              <div style={{ fontSize: 9, color: "var(--muted)", marginTop: 2 }}>Selfie</div>
+                            </div>
+                          )}
+                          {l.image2 && (
+                            <div style={{ textAlign: "center" }}>
+                              <img src={l.image2} alt="Card" className="borrower-photo" onClick={() => setLightbox(l.image2)} />
+                              <div style={{ fontSize: 9, color: "var(--muted)", marginTop: 2 }}>Card</div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </td>
+                    <td style={{ color: "var(--muted)", fontSize: 12 }}>{l.residency_place || "—"}</td>
                     <td className="amount-cell">{fmt(l.amount)}</td>
-                    <td>{new Date(l.due_date).toLocaleDateString("en-ZA")}</td>
+                    <td style={{ whiteSpace: "nowrap" }}>{new Date(l.due_date).toLocaleDateString("en-ZA")}</td>
                     <td><span className="status-pill" style={{ background: statusLabel(l).color + "20", color: statusLabel(l).color }}>{statusLabel(l).text}</span></td>
                     <td className="actions">
                       {l.status === "active" && <button className="btn btn-sm btn-primary" onClick={() => markPaid(l)}>✓ Mark Paid</button>}
@@ -1160,18 +1152,19 @@ function MainApp({ role, onLogout }) {
   );
 }
 
-// ── Router — /apply is PUBLIC, dashboard requires login ───────────────────────
+// ── Router App ────────────────────────────────────────────────────────────────
 function AppRouter() {
   const [role, setRole] = useState(null);
+
+  if (!role) {
+    return <><style>{css}</style><LoginScreen onLogin={setRole} /></>;
+  }
+
   return (
     <Router>
       <Routes>
-        <Route path="/apply" element={<><style>{css}</style><ApplicationForm /></>} />
-        <Route path="/*" element={
-          role
-            ? <MainApp role={role} onLogout={() => setRole(null)} />
-            : <><style>{css}</style><LoginScreen onLogin={setRole} /></>
-        } />
+        <Route path="/" element={<MainApp role={role} onLogout={() => setRole(null)} />} />
+        <Route path="/apply" element={<ApplicationForm />} />
       </Routes>
     </Router>
   );

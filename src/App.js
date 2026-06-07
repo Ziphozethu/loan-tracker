@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
-import { QRCodeCanvas } from "qrcode.react";
+const QRCode = require("qrcode.react");
 
 // ── Environment Variables ─────────────────────────────────────────────────────
 const SUPABASE_URL = process.env.REACT_APP_SUPABASE_URL || "";
@@ -297,20 +297,43 @@ function LoginScreen({ onLogin }) {
   );
 }
 
-// ── Supabase Storage upload — saves file, returns public URL (no base64 in DB)
+// ── Image compression — resize to max 800px, 70% JPEG quality before upload ───
+// Reduces a 4MB phone photo down to ~150–250KB with no visible quality loss
+function compressImage(file, maxPx = 800, quality = 0.7) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const scale = Math.min(1, maxPx / Math.max(img.width, img.height));
+      const canvas = document.createElement("canvas");
+      canvas.width  = Math.round(img.width  * scale);
+      canvas.height = Math.round(img.height * scale);
+      canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
+      canvas.toBlob(
+        (blob) => resolve(new File([blob], file.name || "photo.jpg", { type: "image/jpeg" })),
+        "image/jpeg",
+        quality
+      );
+    };
+    img.src = url;
+  });
+}
+
+// ── Supabase Storage upload — saves compressed file, returns public URL ────────
 async function uploadImageToStorage(file, folder, slot) {
   if (!file) return null;
-  const ext = (file.name || "jpg").split(".").pop();
-  const path = `${folder}/${slot}-${Date.now()}.${ext}`;
+  const compressed = await compressImage(file);
+  const path   = `${folder}/${slot}-${Date.now()}.jpg`;
   const bucket = "loan-images";
   const res = await fetch(`${SUPABASE_URL}/storage/v1/object/${bucket}/${path}`, {
     method: "POST",
     headers: {
       apikey: SUPABASE_KEY,
       Authorization: `Bearer ${SUPABASE_KEY}`,
-      "Content-Type": file.type || "image/jpeg",
+      "Content-Type": "image/jpeg",
     },
-    body: file,
+    body: compressed,
   });
   if (!res.ok) throw new Error("Image upload failed: " + (await res.text()));
   return `${SUPABASE_URL}/storage/v1/object/public/${bucket}/${path}`;
@@ -318,6 +341,7 @@ async function uploadImageToStorage(file, folder, slot) {
 
 // ── Image Upload Component ────────────────────────────────────────────────────
 // Previews locally via object URL. Passes the raw File up via onChange(file).
+// Compression happens inside uploadImageToStorage — not here.
 function ImageUpload({ label, preview, onChange }) {
   const ref = useRef();
   return (
@@ -357,7 +381,7 @@ function QRModal({ onClose }) {
         <div className="modal-body" style={{ alignItems: "center" }}>
           <p style={{ fontSize: 12, color: "var(--muted)" }}>Share this QR code with clients to apply for loans</p>
           <div ref={qrRef} style={{ padding: 16, background: "#fff", borderRadius: 12 }}>
-            <QRCodeCanvas value={applURL} size={200} level="H" />
+            <QRCode value={applURL} size={200} level="H" />
           </div>
           <p style={{ fontSize: 11, color: "var(--muted)", textAlign: "center" }}>URL: {applURL}</p>
           <button className="btn btn-primary" style={{ width: "100%" }} onClick={() => {
@@ -381,25 +405,20 @@ function QRModal({ onClose }) {
 // ── Application Form (Client QR) ──────────────────────────────────────────────
 function ApplicationForm() {
   const [form, setForm] = useState({
-    borrower_name: "",
-    phone: "",
-    residency_place: "",
-    bank_name: "",
-    account_number: "",
-    amount: "",
-    due_date: "",
+    borrower_name: "", phone: "", residency_place: "",
+    bank_name: "", account_number: "", amount: "", due_date: "",
   });
-  // Store File objects for upload, and separate preview URLs
-  const [img1File, setImg1File] = useState(null);
-  const [img2File, setImg2File] = useState(null);
+  const [img1File, setImg1File]       = useState(null);
+  const [img2File, setImg2File]       = useState(null);
   const [img1Preview, setImg1Preview] = useState("");
   const [img2Preview, setImg2Preview] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-  const [success, setSuccess] = useState(false);
+  const [loading, setLoading]         = useState(false);
+  const [error, setError]             = useState("");
+  const [success, setSuccess]         = useState(false);
 
   const handleImg = (slot, file) => {
     if (!file) return;
+    // Local preview only — never read as base64
     const url = URL.createObjectURL(file);
     if (slot === 1) { setImg1File(file); setImg1Preview(url); }
     else            { setImg2File(file); setImg2Preview(url); }
@@ -416,20 +435,16 @@ function ApplicationForm() {
     setLoading(true);
     try {
       const folder = `apply-${Date.now()}`;
-      // Upload both images to Supabase Storage — only URLs go into the DB
+      // uploadImageToStorage compresses before uploading — keeps storage small
       const [url1, url2] = await Promise.all([
         uploadImageToStorage(img1File, folder, "selfie"),
         uploadImageToStorage(img2File, folder, "student-card"),
       ]);
       await sb("POST", "/pending_applications", {
-        ...form,
-        amount: Number(form.amount),
-        image1: url1,
-        image2: url2,
-        status: "pending",
+        ...form, amount: Number(form.amount),
+        image1: url1, image2: url2, status: "pending",
       });
-      setError("");
-      setSuccess(true);
+      setError(""); setSuccess(true);
     } catch (err) {
       setError("Failed to submit: " + err.message);
     }
@@ -499,7 +514,9 @@ function ApplicationForm() {
 
           <div style={{ display: "flex", gap: 8, marginTop: 24 }}>
             <button type="button" className="btn btn-ghost" style={{ flex: 1 }} onClick={() => window.history.back()}>Cancel</button>
-            <button type="submit" className="btn btn-primary" style={{ flex: 1 }} disabled={loading}>{loading ? "Submitting..." : "Submit Application"}</button>
+            <button type="submit" className="btn btn-primary" style={{ flex: 1 }} disabled={loading}>
+              {loading ? "Uploading & Submitting…" : "Submit Application"}
+            </button>
           </div>
         </form>
       </div>
@@ -770,26 +787,25 @@ function MainApp({ role, onLogout }) {
 
   const LoanModal = () => {
     const [form, setForm] = useState({
-      borrower_name: editing?.borrower_name || "",
-      phone: editing?.phone || "",
-      amount: editing?.amount || "",
-      loan_date: editing?.loan_date || new Date().toISOString().split("T")[0],
-      due_date: editing?.due_date || "",
-      notes: editing?.notes || "",
-      status: editing?.status || "active",
-      bank_name: editing?.bank_name || "",
-      account_number: editing?.account_number || "",
+      borrower_name:   editing?.borrower_name   || "",
+      phone:           editing?.phone           || "",
+      amount:          editing?.amount          || "",
+      loan_date:       editing?.loan_date       || new Date().toISOString().split("T")[0],
+      due_date:        editing?.due_date        || "",
+      notes:           editing?.notes           || "",
+      status:          editing?.status          || "active",
+      bank_name:       editing?.bank_name       || "",
+      account_number:  editing?.account_number  || "",
       residency_place: editing?.residency_place || "",
-      image1: editing?.image1 || "",
-      image2: editing?.image2 || "",
+      image1:          editing?.image1          || "",
+      image2:          editing?.image2          || "",
     });
-    // Store File objects for upload — previews use object URLs
-    const [imgFile1, setImgFile1] = useState(null);
-    const [imgFile2, setImgFile2] = useState(null);
+    const [imgFile1, setImgFile1]       = useState(null);
+    const [imgFile2, setImgFile2]       = useState(null);
     const [img1Preview, setImg1Preview] = useState(editing?.image1 || "");
     const [img2Preview, setImg2Preview] = useState(editing?.image2 || "");
-    const [saving, setSaving] = useState(false);
-    const [uploadErr, setUploadErr] = useState("");
+    const [saving, setSaving]           = useState(false);
+    const [imgErr, setImgErr]           = useState("");
 
     const handleImgChange = (slot, file) => {
       const url = URL.createObjectURL(file);
@@ -798,15 +814,16 @@ function MainApp({ role, onLogout }) {
     };
 
     const handleSave = async () => {
-      setSaving(true); setUploadErr("");
+      setSaving(true); setImgErr("");
       try {
-        const uploadData = { ...form };
+        const data   = { ...form };
         const folder = editing?.id ? `loan-${editing.id}` : `loan-${Date.now()}`;
-        if (imgFile1) uploadData.image1 = await uploadImageToStorage(imgFile1, folder, "photo1");
-        if (imgFile2) uploadData.image2 = await uploadImageToStorage(imgFile2, folder, "photo2");
-        await saveLoan(uploadData);
+        // compressImage runs inside uploadImageToStorage — keeps DB and storage lean
+        if (imgFile1) data.image1 = await uploadImageToStorage(imgFile1, folder, "photo1");
+        if (imgFile2) data.image2 = await uploadImageToStorage(imgFile2, folder, "photo2");
+        await saveLoan(data);
       } catch (e) {
-        setUploadErr("Upload failed: " + e.message);
+        setImgErr("Upload failed: " + e.message);
         setSaving(false);
       }
     };
@@ -865,23 +882,12 @@ function MainApp({ role, onLogout }) {
                 <option value="paid">Paid</option>
               </select>
             </div>
-            {/* Image upload fields — same as client QR form */}
             <div className="form-row">
-              <ImageUpload
-                label="📸 Selfie / Profile Photo"
-                preview={img1Preview}
-                onChange={(file) => handleImgChange(1, file)}
-              />
-              <ImageUpload
-                label="🪪 Student Card Photo"
-                preview={img2Preview}
-                onChange={(file) => handleImgChange(2, file)}
-              />
+              <ImageUpload label="📸 Selfie / Profile" preview={img1Preview} onChange={(f) => handleImgChange(1, f)} />
+              <ImageUpload label="🪪 Student Card"     preview={img2Preview} onChange={(f) => handleImgChange(2, f)} />
             </div>
-            <p style={{ fontSize: 11, color: "var(--muted)" }}>
-              Photos upload to secure cloud storage — not stored in the database.
-            </p>
-            {uploadErr && <p style={{ color: "var(--danger)", fontSize: 12 }}>{uploadErr}</p>}
+            <p style={{ fontSize: 11, color: "var(--muted)" }}>Photos are compressed and uploaded to secure storage.</p>
+            {imgErr && <p style={{ color: "var(--danger)", fontSize: 12 }}>{imgErr}</p>}
           </div>
           <div className="modal-footer">
             <button className="btn btn-ghost" onClick={() => setModal(null)}>Cancel</button>
@@ -1040,7 +1046,6 @@ function MainApp({ role, onLogout }) {
               <thead>
                 <tr>
                   <th>Borrower</th>
-                  <th>Phone</th>
                   <th>Amount</th>
                   <th>Due Date</th>
                   <th>Status</th>
@@ -1049,11 +1054,41 @@ function MainApp({ role, onLogout }) {
               </thead>
               <tbody>
                 {filtered.length === 0 ? (
-                  <tr><td colSpan="6" style={{ textAlign: "center", color: "var(--muted)", padding: "32px" }}>No loans found</td></tr>
+                  <tr><td colSpan="5" style={{ textAlign: "center", color: "var(--muted)", padding: "32px" }}>No loans found</td></tr>
                 ) : filtered.map(l => (
                   <tr key={l.id}>
-                    <td className="name-cell">{l.borrower_name}</td>
-                    <td className="phone-cell">{formatPhoneZA(l.phone)}</td>
+                    <td>
+                      <div className="name-cell">{l.borrower_name}</div>
+                      <div className="phone-cell">{formatPhoneZA(l.phone)}</div>
+                      {(l.image1 || l.image2) && (
+                        <div className="borrower-photos">
+                          {l.image1 && (
+                            <div style={{ textAlign: "center" }}>
+                              <img
+                                src={l.image1}
+                                alt="Selfie"
+                                className="borrower-photo"
+                                onClick={() => setLightbox(l.image1)}
+                                title="Selfie"
+                              />
+                              <div style={{ fontSize: 9, color: "var(--muted)", marginTop: 2 }}>Selfie</div>
+                            </div>
+                          )}
+                          {l.image2 && (
+                            <div style={{ textAlign: "center" }}>
+                              <img
+                                src={l.image2}
+                                alt="Card"
+                                className="borrower-photo"
+                                onClick={() => setLightbox(l.image2)}
+                                title="Student Card"
+                              />
+                              <div style={{ fontSize: 9, color: "var(--muted)", marginTop: 2 }}>Card</div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </td>
                     <td className="amount-cell">{fmt(l.amount)}</td>
                     <td>{new Date(l.due_date).toLocaleDateString("en-ZA")}</td>
                     <td><span className="status-pill" style={{ background: statusLabel(l).color + "20", color: statusLabel(l).color }}>{statusLabel(l).text}</span></td>
@@ -1223,18 +1258,24 @@ function MainApp({ role, onLogout }) {
 }
 
 // ── Router App ────────────────────────────────────────────────────────────────
+// /apply is PUBLIC — clients who scan the QR never see the login screen
 function AppRouter() {
   const [role, setRole] = useState(null);
-
-  if (!role) {
-    return <><style>{css}</style><LoginScreen onLogin={setRole} /></>;
-  }
 
   return (
     <Router>
       <Routes>
-        <Route path="/" element={<MainApp role={role} onLogout={() => setRole(null)} />} />
-        <Route path="/apply" element={<ApplicationForm />} />
+        {/* Public route — no login required */}
+        <Route path="/apply" element={<><style>{css}</style><ApplicationForm /></>} />
+        {/* Protected dashboard */}
+        <Route
+          path="/*"
+          element={
+            role
+              ? <MainApp role={role} onLogout={() => setRole(null)} />
+              : <><style>{css}</style><LoginScreen onLogin={setRole} /></>
+          }
+        />
       </Routes>
     </Router>
   );

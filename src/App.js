@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
-import { QRCodeCanvas } from "qrcode.react";
+const QRCode = require("qrcode.react");
 
 // ── Environment Variables ─────────────────────────────────────────────────────
 const SUPABASE_URL = process.env.REACT_APP_SUPABASE_URL || "";
@@ -298,27 +298,21 @@ function LoginScreen({ onLogin }) {
 }
 
 // ── Image Upload Component ────────────────────────────────────────────────────
-// No `capture` attribute — lets phone show "Take Photo / Choose from Library"
-// menu which returns correctly without losing form state
 function ImageUpload({ label, preview, onChange }) {
   const ref = useRef();
   return (
-    <div className="form-group" style={{ marginBottom: 16 }}>
+    <div className="form-group">
       <label>{label}</label>
       <div className="img-upload-box" onClick={() => ref.current.click()}>
-        <input
-          ref={ref}
-          type="file"
-          accept="image/*"
-          style={{ display: "none" }}
-          onChange={(e) => {
-            const file = e.target.files?.[0];
-            if (file) onChange(file);
-          }}
-        />
-        {preview
-          ? <img src={preview} alt="preview" className="img-preview" />
-          : <p>📷 Tap to take or upload photo</p>}
+        <input ref={ref} type="file" accept="image/*" style={{ display: "none" }} onChange={(e) => {
+          const file = e.target.files?.[0];
+          if (file) {
+            const reader = new FileReader();
+            reader.onload = (e) => onChange(e.target.result);
+            reader.readAsDataURL(file);
+          }
+        }} />
+        {preview ? <img src={preview} alt="preview" className="img-preview" /> : <p>📷 Tap to upload</p>}
       </div>
     </div>
   );
@@ -338,7 +332,7 @@ function QRModal({ onClose }) {
         <div className="modal-body" style={{ alignItems: "center" }}>
           <p style={{ fontSize: 12, color: "var(--muted)" }}>Share this QR code with clients to apply for loans</p>
           <div ref={qrRef} style={{ padding: 16, background: "#fff", borderRadius: 12 }}>
-            <QRCodeCanvas value={applURL} size={200} level="H" />
+            <QRCode value={applURL} size={200} level="H" />
           </div>
           <p style={{ fontSize: 11, color: "var(--muted)", textAlign: "center" }}>URL: {applURL}</p>
           <button className="btn btn-primary" style={{ width: "100%" }} onClick={() => {
@@ -359,87 +353,57 @@ function QRModal({ onClose }) {
   );
 }
 
-// ── Image compression + Supabase Storage upload ───────────────────────────────
-function compressImage(file, maxPx = 800, quality = 0.72) {
-  return new Promise((resolve) => {
-    const img = new Image();
-    const url = URL.createObjectURL(file);
-    img.onload = () => {
-      URL.revokeObjectURL(url);
-      const scale  = Math.min(1, maxPx / Math.max(img.width, img.height));
-      const canvas = document.createElement("canvas");
-      canvas.width  = Math.round(img.width  * scale);
-      canvas.height = Math.round(img.height * scale);
-      canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
-      canvas.toBlob(
-        (blob) => resolve(new File([blob], "photo.jpg", { type: "image/jpeg" })),
-        "image/jpeg", quality
-      );
-    };
-    img.src = url;
-  });
-}
-
-async function uploadImage(file, folder, slot) {
-  const compressed = await compressImage(file);
-  const path   = `${folder}/${slot}-${Date.now()}.jpg`;
-  const bucket = "loan-images";
-  const res = await fetch(`${SUPABASE_URL}/storage/v1/object/${bucket}/${path}`, {
-    method: "POST",
-    headers: {
-      apikey: SUPABASE_KEY,
-      Authorization: `Bearer ${SUPABASE_KEY}`,
-      "Content-Type": "image/jpeg",
-    },
-    body: compressed,
-  });
-  if (!res.ok) throw new Error("Upload failed: " + (await res.text()));
-  return `${SUPABASE_URL}/storage/v1/object/public/${bucket}/${path}`;
-}
-
-// ── Application Form (Client QR) — PUBLIC, no login needed ───────────────────
-function ApplicationForm() {
+// ── Application Form (Client QR) ──────────────────────────────────────────────
+function ApplicationForm({ onSuccess }) {
   const [form, setForm] = useState({
-    borrower_name: "", phone: "", residency_place: "",
-    bank_name: "", account_number: "", amount: "", due_date: "",
+    borrower_name: "",
+    phone: "",
+    residency_place: "",
+    bank_name: "",
+    account_number: "",
+    amount: "",
+    due_date: "",
   });
-  // Store File objects — never base64. Preview via object URLs.
-  const [file1, setFile1]     = useState(null);
-  const [file2, setFile2]     = useState(null);
-  const [prev1, setPrev1]     = useState("");
-  const [prev2, setPrev2]     = useState("");
+  const [image1, setImage1] = useState(null);
+  const [image2, setImage2] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [error, setError]     = useState("");
+  const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
-
-  const handleImg = (slot, file) => {
-    // Create a local preview URL — does NOT store base64, uses no extra memory
-    const url = URL.createObjectURL(file);
-    if (slot === 1) { setFile1(file); setPrev1(url); }
-    else            { setFile2(file); setPrev2(url); }
-  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!form.borrower_name || !form.phone || !form.amount || !form.due_date)
-      return setError("Please fill in all required fields.");
-    if (!file1 || !file2)
-      return setError("Please upload both your selfie and student card photo.");
-    setLoading(true); setError("");
+    if (!form.borrower_name || !form.phone || !form.amount || !form.due_date) {
+      setError("Please fill all required fields");
+      return;
+    }
+    if (!image1 || !image2) {
+      setError("Please upload both selfie and document photos");
+      return;
+    }
+
+    setLoading(true);
     try {
-      const folder = `apply-${Date.now()}`;
-      // Compress then upload — only URLs go into the database
-      const [url1, url2] = await Promise.all([
-        uploadImage(file1, folder, "selfie"),
-        uploadImage(file2, folder, "card"),
-      ]);
-      await sb("POST", "/pending_applications", {
-        ...form, amount: Number(form.amount),
-        image1: url1, image2: url2, status: "pending",
-      });
-      setSuccess(true); // show success screen — NO window.location redirect
+      const application = {
+        borrower_name: form.borrower_name,
+        phone: form.phone,
+        residency_place: form.residency_place,
+        bank_name: form.bank_name,
+        account_number: form.account_number,
+        amount: Number(form.amount),
+        due_date: form.due_date,
+        image1,
+        image2,
+        status: "pending",
+      };
+      
+      await sb("POST", "/pending_applications", application);
+      setError("");
+      setSuccess(true);
+      setTimeout(() => {
+        window.location.href = "/";
+      }, 2000);
     } catch (err) {
-      setError("Submission failed: " + err.message);
+      setError("Failed to submit application: " + err.message);
     }
     setLoading(false);
   };
@@ -448,9 +412,10 @@ function ApplicationForm() {
     return (
       <div style={{ background: "var(--bg)", minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: "20px" }}>
         <div style={{ textAlign: "center", maxWidth: 400 }}>
-          <div style={{ fontSize: 56, marginBottom: 16 }}>✅</div>
+          <div style={{ fontSize: 48, marginBottom: 16 }}>✅</div>
           <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: 24, color: "var(--accent)", marginBottom: 8 }}>Application Submitted!</h1>
-          <p style={{ color: "var(--muted)" }}>Your loan application has been received. We will contact you on WhatsApp shortly.</p>
+          <p style={{ color: "var(--muted)", marginBottom: 16 }}>Your loan application has been received. You will be contacted soon.</p>
+          <p style={{ fontSize: 12, color: "var(--muted)" }}>Redirecting...</p>
         </div>
       </div>
     );
@@ -460,46 +425,54 @@ function ApplicationForm() {
     <div style={{ background: "var(--bg)", minHeight: "100vh", padding: "20px 16px" }}>
       <div className="app" style={{ maxWidth: 500 }}>
         <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: 26, color: "var(--accent)", marginBottom: 8 }}>Loan Application</h1>
-        <p style={{ color: "var(--muted)", fontSize: 13, marginBottom: 24 }}>Fill in your details to apply for a loan</p>
+        <p style={{ color: "var(--muted)", fontSize: 13, marginBottom: 24 }}>Submit your details to apply for a loan</p>
 
         <form onSubmit={handleSubmit} style={{ background: "var(--surface)", borderRadius: "var(--radius)", padding: 20, border: "1px solid var(--border)" }}>
           <div className="form-group" style={{ marginBottom: 16 }}>
             <label>Full Name *</label>
-            <input type="text" placeholder="Your full name" value={form.borrower_name} onChange={(e) => setForm({...form, borrower_name: e.target.value})} />
+            <input type="text" placeholder="Enter your full name" value={form.borrower_name} onChange={(e) => setForm({...form, borrower_name: e.target.value})} />
           </div>
+
           <div className="form-group" style={{ marginBottom: 16 }}>
-            <label>WhatsApp Number *</label>
-            <input type="tel" placeholder="0812345678" value={form.phone} onChange={(e) => setForm({...form, phone: e.target.value})} />
+            <label>Phone *</label>
+            <input type="tel" placeholder="+27 123 456 7890" value={form.phone} onChange={(e) => setForm({...form, phone: e.target.value})} />
           </div>
+
           <div className="form-group" style={{ marginBottom: 16 }}>
-            <label>Residency / Area</label>
-            <input type="text" placeholder="Your town or area" value={form.residency_place} onChange={(e) => setForm({...form, residency_place: e.target.value})} />
+            <label>Residency Place</label>
+            <input type="text" placeholder="Your address" value={form.residency_place} onChange={(e) => setForm({...form, residency_place: e.target.value})} />
           </div>
+
           <div className="form-group" style={{ marginBottom: 16 }}>
             <label>Bank Name</label>
-            <input type="text" placeholder="e.g. Capitec, FNB" value={form.bank_name} onChange={(e) => setForm({...form, bank_name: e.target.value})} />
+            <input type="text" placeholder="E.g., First National Bank" value={form.bank_name} onChange={(e) => setForm({...form, bank_name: e.target.value})} />
           </div>
+
           <div className="form-group" style={{ marginBottom: 16 }}>
             <label>Account Number</label>
-            <input type="text" placeholder="Your bank account number" value={form.account_number} onChange={(e) => setForm({...form, account_number: e.target.value})} />
+            <input type="text" placeholder="Your account number" value={form.account_number} onChange={(e) => setForm({...form, account_number: e.target.value})} />
           </div>
+
           <div className="form-group" style={{ marginBottom: 16 }}>
             <label>Loan Amount (ZAR) *</label>
             <input type="number" placeholder="5000" value={form.amount} onChange={(e) => setForm({...form, amount: e.target.value})} />
           </div>
+
           <div className="form-group" style={{ marginBottom: 16 }}>
             <label>Repayment Date *</label>
             <input type="date" value={form.due_date} onChange={(e) => setForm({...form, due_date: e.target.value})} />
           </div>
 
-          <ImageUpload label="📸 Selfie Photo *"       preview={prev1} onChange={(f) => handleImg(1, f)} />
-          <ImageUpload label="🪪 Student Card Photo *" preview={prev2} onChange={(f) => handleImg(2, f)} />
+          <ImageUpload label="📸 Selfie Photo *" preview={image1} onChange={setImage1} />
+          
+          <ImageUpload label="📋 Document Photo (Student Card/ID) *" preview={image2} onChange={setImage2} />
 
-          {error && <div style={{ color: "var(--danger)", fontSize: 12, marginTop: 8, padding: 12, background: "var(--danger-light)", borderRadius: 8 }}>{error}</div>}
+          {error && <div style={{ color: "var(--danger)", fontSize: 12, marginTop: 16, padding: 12, background: "var(--danger-light)", borderRadius: 8 }}>{error}</div>}
 
-          <button type="submit" className="btn btn-primary" style={{ width: "100%", justifyContent: "center", marginTop: 20 }} disabled={loading}>
-            {loading ? "Uploading & Submitting…" : "Submit Application"}
-          </button>
+          <div style={{ display: "flex", gap: 8, marginTop: 24 }}>
+            <button type="button" className="btn btn-ghost" style={{ flex: 1 }} onClick={() => window.history.back()}>Cancel</button>
+            <button type="submit" className="btn btn-primary" style={{ flex: 1 }} disabled={loading}>{loading ? "Submitting..." : "Submit Application"}</button>
+          </div>
         </form>
       </div>
     </div>
@@ -977,12 +950,12 @@ function MainApp({ role, onLogout }) {
             <table>
               <thead>
                 <tr>
-                  <th>Borrower</th>
-                  <th>Residence</th>
-                  <th>Amount</th>
-                  <th>Due Date</th>
-                  <th>Status</th>
-                  <th>Actions</th>
+                  <th style={{ minWidth: 160 }}>Borrower</th>
+                  <th style={{ minWidth: 120 }}>Residence</th>
+                  <th style={{ minWidth: 100 }}>Amount</th>
+                  <th style={{ minWidth: 100 }}>Due Date</th>
+                  <th style={{ minWidth: 90 }}>Status</th>
+                  <th style={{ minWidth: 160 }}>Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -994,30 +967,34 @@ function MainApp({ role, onLogout }) {
                       <div className="name-cell">{l.borrower_name}</div>
                       <div className="phone-cell">{formatPhoneZA(l.phone)}</div>
                       {(l.image1 || l.image2) && (
-                        <div style={{ display:"flex", gap:6, marginTop:6 }}>
+                        <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
                           {l.image1 && (
-                            <div style={{ textAlign:"center" }}>
-                              <img src={l.image1} alt="Selfie" style={{ width:36, height:36, borderRadius:6, objectFit:"cover", border:"1px solid var(--border)", cursor:"pointer" }} onClick={() => setLightbox(l.image1)} />
-                              <div style={{ fontSize:9, color:"var(--muted)", marginTop:2 }}>Selfie</div>
+                            <div style={{ textAlign: "center" }}>
+                              <img src={l.image1} alt="Selfie" onClick={() => setLightbox(l.image1)}
+                                style={{ width: 36, height: 36, borderRadius: 6, objectFit: "cover", border: "1px solid var(--border)", cursor: "pointer" }} />
+                              <div style={{ fontSize: 9, color: "var(--muted)", marginTop: 2 }}>Selfie</div>
                             </div>
                           )}
                           {l.image2 && (
-                            <div style={{ textAlign:"center" }}>
-                              <img src={l.image2} alt="Card" style={{ width:36, height:36, borderRadius:6, objectFit:"cover", border:"1px solid var(--border)", cursor:"pointer" }} onClick={() => setLightbox(l.image2)} />
-                              <div style={{ fontSize:9, color:"var(--muted)", marginTop:2 }}>Card</div>
+                            <div style={{ textAlign: "center" }}>
+                              <img src={l.image2} alt="Card" onClick={() => setLightbox(l.image2)}
+                                style={{ width: 36, height: 36, borderRadius: 6, objectFit: "cover", border: "1px solid var(--border)", cursor: "pointer" }} />
+                              <div style={{ fontSize: 9, color: "var(--muted)", marginTop: 2 }}>Card</div>
                             </div>
                           )}
                         </div>
                       )}
                     </td>
-                    <td style={{ color:"var(--muted)", fontSize:12 }}>{l.residency_place || "—"}</td>
+                    <td style={{ color: "var(--muted)", fontSize: 12 }}>{l.residency_place || "—"}</td>
                     <td className="amount-cell">{fmt(l.amount)}</td>
-                    <td>{new Date(l.due_date).toLocaleDateString("en-ZA")}</td>
+                    <td style={{ whiteSpace: "nowrap" }}>{new Date(l.due_date).toLocaleDateString("en-ZA")}</td>
                     <td><span className="status-pill" style={{ background: statusLabel(l).color + "20", color: statusLabel(l).color }}>{statusLabel(l).text}</span></td>
-                    <td className="actions">
-                      {l.status === "active" && <button className="btn btn-sm btn-primary" onClick={() => markPaid(l)}>✓ Mark Paid</button>}
-                      {l.status === "active" && <button className="btn btn-sm btn-ghost" onClick={() => sendReminder(l)}>💬 Remind</button>}
-                      {role === "admin" && <button className="btn btn-sm btn-ghost" onClick={() => { setEditing(l); setModal("loan"); }}>✏️ Edit</button>}
+                    <td>
+                      <div className="actions">
+                        {l.status === "active" && <button className="btn btn-sm btn-primary" onClick={() => markPaid(l)}>✓ Paid</button>}
+                        {l.status === "active" && <button className="btn btn-sm btn-ghost" onClick={() => sendReminder(l)}>💬</button>}
+                        {role === "admin" && <button className="btn btn-sm btn-ghost" onClick={() => { setEditing(l); setModal("loan"); }}>✏️</button>}
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -1179,18 +1156,19 @@ function MainApp({ role, onLogout }) {
   );
 }
 
-// ── Router — /apply is PUBLIC, dashboard requires login ───────────────────────
+// ── Router App ────────────────────────────────────────────────────────────────
 function AppRouter() {
   const [role, setRole] = useState(null);
+
+  if (!role) {
+    return <><style>{css}</style><LoginScreen onLogin={setRole} /></>;
+  }
+
   return (
     <Router>
       <Routes>
-        <Route path="/apply" element={<><style>{css}</style><ApplicationForm /></>} />
-        <Route path="/*" element={
-          role
-            ? <MainApp role={role} onLogout={() => setRole(null)} />
-            : <><style>{css}</style><LoginScreen onLogin={setRole} /></>
-        } />
+        <Route path="/" element={<MainApp role={role} onLogout={() => setRole(null)} />} />
+        <Route path="/apply" element={<ApplicationForm />} />
       </Routes>
     </Router>
   );

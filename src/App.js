@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
-const QRCode = require("qrcode.react");
+import { QRCodeCanvas } from "qrcode.react";
 
 // ── Environment Variables ─────────────────────────────────────────────────────
 const SUPABASE_URL = process.env.REACT_APP_SUPABASE_URL || "";
@@ -297,22 +297,47 @@ function LoginScreen({ onLogin }) {
   );
 }
 
+// ── Supabase Storage upload — saves file, returns public URL (no base64 in DB)
+async function uploadImageToStorage(file, folder, slot) {
+  if (!file) return null;
+  const ext = (file.name || "jpg").split(".").pop();
+  const path = `${folder}/${slot}-${Date.now()}.${ext}`;
+  const bucket = "loan-images";
+  const res = await fetch(`${SUPABASE_URL}/storage/v1/object/${bucket}/${path}`, {
+    method: "POST",
+    headers: {
+      apikey: SUPABASE_KEY,
+      Authorization: `Bearer ${SUPABASE_KEY}`,
+      "Content-Type": file.type || "image/jpeg",
+    },
+    body: file,
+  });
+  if (!res.ok) throw new Error("Image upload failed: " + (await res.text()));
+  return `${SUPABASE_URL}/storage/v1/object/public/${bucket}/${path}`;
+}
+
 // ── Image Upload Component ────────────────────────────────────────────────────
+// Previews locally via object URL. Passes the raw File up via onChange(file).
 function ImageUpload({ label, preview, onChange }) {
   const ref = useRef();
   return (
     <div className="form-group">
       <label>{label}</label>
       <div className="img-upload-box" onClick={() => ref.current.click()}>
-        <input ref={ref} type="file" accept="image/*" style={{ display: "none" }} onChange={(e) => {
-          const file = e.target.files?.[0];
-          if (file) {
-            const reader = new FileReader();
-            reader.onload = (e) => onChange(e.target.result);
-            reader.readAsDataURL(file);
-          }
-        }} />
-        {preview ? <img src={preview} alt="preview" className="img-preview" /> : <p>📷 Tap to upload</p>}
+        <input
+          ref={ref}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          style={{ display: "none" }}
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (file) onChange(file);
+          }}
+        />
+        {preview
+          ? <img src={preview} alt="preview" className="img-preview" />
+          : <p>📷 Tap to capture or upload</p>}
       </div>
     </div>
   );
@@ -332,7 +357,7 @@ function QRModal({ onClose }) {
         <div className="modal-body" style={{ alignItems: "center" }}>
           <p style={{ fontSize: 12, color: "var(--muted)" }}>Share this QR code with clients to apply for loans</p>
           <div ref={qrRef} style={{ padding: 16, background: "#fff", borderRadius: 12 }}>
-            <QRCode value={applURL} size={200} level="H" />
+            <QRCodeCanvas value={applURL} size={200} level="H" />
           </div>
           <p style={{ fontSize: 11, color: "var(--muted)", textAlign: "center" }}>URL: {applURL}</p>
           <button className="btn btn-primary" style={{ width: "100%" }} onClick={() => {
@@ -354,7 +379,7 @@ function QRModal({ onClose }) {
 }
 
 // ── Application Form (Client QR) ──────────────────────────────────────────────
-function ApplicationForm({ onSuccess }) {
+function ApplicationForm() {
   const [form, setForm] = useState({
     borrower_name: "",
     phone: "",
@@ -364,46 +389,49 @@ function ApplicationForm({ onSuccess }) {
     amount: "",
     due_date: "",
   });
-  const [image1, setImage1] = useState(null);
-  const [image2, setImage2] = useState(null);
+  // Store File objects for upload, and separate preview URLs
+  const [img1File, setImg1File] = useState(null);
+  const [img2File, setImg2File] = useState(null);
+  const [img1Preview, setImg1Preview] = useState("");
+  const [img2Preview, setImg2Preview] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
 
+  const handleImg = (slot, file) => {
+    if (!file) return;
+    const url = URL.createObjectURL(file);
+    if (slot === 1) { setImg1File(file); setImg1Preview(url); }
+    else            { setImg2File(file); setImg2Preview(url); }
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!form.borrower_name || !form.phone || !form.amount || !form.due_date) {
-      setError("Please fill all required fields");
-      return;
+      setError("Please fill all required fields"); return;
     }
-    if (!image1 || !image2) {
-      setError("Please upload both selfie and document photos");
-      return;
+    if (!img1File || !img2File) {
+      setError("Please upload both selfie and student card photos"); return;
     }
-
     setLoading(true);
     try {
-      const application = {
-        borrower_name: form.borrower_name,
-        phone: form.phone,
-        residency_place: form.residency_place,
-        bank_name: form.bank_name,
-        account_number: form.account_number,
+      const folder = `apply-${Date.now()}`;
+      // Upload both images to Supabase Storage — only URLs go into the DB
+      const [url1, url2] = await Promise.all([
+        uploadImageToStorage(img1File, folder, "selfie"),
+        uploadImageToStorage(img2File, folder, "student-card"),
+      ]);
+      await sb("POST", "/pending_applications", {
+        ...form,
         amount: Number(form.amount),
-        due_date: form.due_date,
-        image1,
-        image2,
+        image1: url1,
+        image2: url2,
         status: "pending",
-      };
-      
-      await sb("POST", "/pending_applications", application);
+      });
       setError("");
       setSuccess(true);
-      setTimeout(() => {
-        window.location.href = "/";
-      }, 2000);
     } catch (err) {
-      setError("Failed to submit application: " + err.message);
+      setError("Failed to submit: " + err.message);
     }
     setLoading(false);
   };
@@ -463,9 +491,9 @@ function ApplicationForm({ onSuccess }) {
             <input type="date" value={form.due_date} onChange={(e) => setForm({...form, due_date: e.target.value})} />
           </div>
 
-          <ImageUpload label="📸 Selfie Photo *" preview={image1} onChange={setImage1} />
+          <ImageUpload label="📸 Selfie Photo *" preview={img1Preview} onChange={(f) => handleImg(1, f)} />
           
-          <ImageUpload label="📋 Document Photo (Student Card/ID) *" preview={image2} onChange={setImage2} />
+          <ImageUpload label="🪪 Student Card Photo *" preview={img2Preview} onChange={(f) => handleImg(2, f)} />
 
           {error && <div style={{ color: "var(--danger)", fontSize: 12, marginTop: 16, padding: 12, background: "var(--danger-light)", borderRadius: 8 }}>{error}</div>}
 
@@ -741,7 +769,47 @@ function MainApp({ role, onLogout }) {
   };
 
   const LoanModal = () => {
-    const [form, setForm] = useState(editing || { borrower_name: "", phone: "", amount: "", loan_date: new Date().toISOString().split('T')[0], due_date: "", notes: "", status: "active", bank_name: "", account_number: "", residency_place: "" });
+    const [form, setForm] = useState({
+      borrower_name: editing?.borrower_name || "",
+      phone: editing?.phone || "",
+      amount: editing?.amount || "",
+      loan_date: editing?.loan_date || new Date().toISOString().split("T")[0],
+      due_date: editing?.due_date || "",
+      notes: editing?.notes || "",
+      status: editing?.status || "active",
+      bank_name: editing?.bank_name || "",
+      account_number: editing?.account_number || "",
+      residency_place: editing?.residency_place || "",
+      image1: editing?.image1 || "",
+      image2: editing?.image2 || "",
+    });
+    // Store File objects for upload — previews use object URLs
+    const [imgFile1, setImgFile1] = useState(null);
+    const [imgFile2, setImgFile2] = useState(null);
+    const [img1Preview, setImg1Preview] = useState(editing?.image1 || "");
+    const [img2Preview, setImg2Preview] = useState(editing?.image2 || "");
+    const [saving, setSaving] = useState(false);
+    const [uploadErr, setUploadErr] = useState("");
+
+    const handleImgChange = (slot, file) => {
+      const url = URL.createObjectURL(file);
+      if (slot === 1) { setImgFile1(file); setImg1Preview(url); }
+      else            { setImgFile2(file); setImg2Preview(url); }
+    };
+
+    const handleSave = async () => {
+      setSaving(true); setUploadErr("");
+      try {
+        const uploadData = { ...form };
+        const folder = editing?.id ? `loan-${editing.id}` : `loan-${Date.now()}`;
+        if (imgFile1) uploadData.image1 = await uploadImageToStorage(imgFile1, folder, "photo1");
+        if (imgFile2) uploadData.image2 = await uploadImageToStorage(imgFile2, folder, "photo2");
+        await saveLoan(uploadData);
+      } catch (e) {
+        setUploadErr("Upload failed: " + e.message);
+        setSaving(false);
+      }
+    };
 
     return (
       <div className="overlay" onClick={() => setModal(null)}>
@@ -772,13 +840,15 @@ function MainApp({ role, onLogout }) {
                 <input type="date" value={form.due_date} onChange={(e) => setForm({...form, due_date: e.target.value})} />
               </div>
             </div>
-            <div className="form-group">
-              <label>Bank Name</label>
-              <input type="text" value={form.bank_name} onChange={(e) => setForm({...form, bank_name: e.target.value})} />
-            </div>
-            <div className="form-group">
-              <label>Account Number</label>
-              <input type="text" value={form.account_number} onChange={(e) => setForm({...form, account_number: e.target.value})} />
+            <div className="form-row">
+              <div className="form-group">
+                <label>Bank Name</label>
+                <input type="text" value={form.bank_name} onChange={(e) => setForm({...form, bank_name: e.target.value})} />
+              </div>
+              <div className="form-group">
+                <label>Account Number</label>
+                <input type="text" value={form.account_number} onChange={(e) => setForm({...form, account_number: e.target.value})} />
+              </div>
             </div>
             <div className="form-group">
               <label>Residency Place</label>
@@ -795,10 +865,29 @@ function MainApp({ role, onLogout }) {
                 <option value="paid">Paid</option>
               </select>
             </div>
+            {/* Image upload fields — same as client QR form */}
+            <div className="form-row">
+              <ImageUpload
+                label="📸 Selfie / Profile Photo"
+                preview={img1Preview}
+                onChange={(file) => handleImgChange(1, file)}
+              />
+              <ImageUpload
+                label="🪪 Student Card Photo"
+                preview={img2Preview}
+                onChange={(file) => handleImgChange(2, file)}
+              />
+            </div>
+            <p style={{ fontSize: 11, color: "var(--muted)" }}>
+              Photos upload to secure cloud storage — not stored in the database.
+            </p>
+            {uploadErr && <p style={{ color: "var(--danger)", fontSize: 12 }}>{uploadErr}</p>}
           </div>
           <div className="modal-footer">
             <button className="btn btn-ghost" onClick={() => setModal(null)}>Cancel</button>
-            <button className="btn btn-primary" onClick={() => saveLoan(form)}>Save</button>
+            <button className="btn btn-primary" onClick={handleSave} disabled={saving}>
+              {saving ? "Saving…" : "Save"}
+            </button>
             {editing && <button className="btn btn-danger" onClick={() => deleteLoan(editing)}>Delete</button>}
           </div>
         </div>

@@ -1,9 +1,19 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
+import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
+const QRCode = require("qrcode.react");
 
-// ── Supabase ──────────────────────────────────────────────────────────────────
-const SUPABASE_URL = process.env.REACT_APP_SUPABASE_URL || "https://fdsqwpgwhcpceiptamfy.supabase.co";
-const SUPABASE_KEY = process.env.REACT_APP_SUPABASE_KEY || "sb_publishable_umuFeOvqGzD1PJCFAWLjNQ_NKK78-Aj";
+// ── Environment Variables ─────────────────────────────────────────────────────
+const SUPABASE_URL = process.env.REACT_APP_SUPABASE_URL || "";
+const SUPABASE_KEY = process.env.REACT_APP_SUPABASE_KEY || "";
 
+if (!SUPABASE_URL || !SUPABASE_KEY) {
+  console.error("⚠️ Missing Supabase env vars. Set REACT_APP_SUPABASE_URL and REACT_APP_SUPABASE_KEY in .env.local");
+}
+
+const ADMIN_PIN = process.env.REACT_APP_ADMIN_PIN || "1234";
+const VIEWER_PASSWORD = process.env.REACT_APP_VIEWER_PASSWORD || "Zesuliwe";
+
+// ── Supabase REST helper ──────────────────────────────────────────────────────
 async function sb(method, path, body) {
   const res = await fetch(`${SUPABASE_URL}/rest/v1${path}`, {
     method,
@@ -21,13 +31,11 @@ async function sb(method, path, body) {
   return t ? JSON.parse(t) : [];
 }
 
-// ── Local storage ─────────────────────────────────────────────────────────────
+// ── Local Storage helpers ─────────────────────────────────────────────────────
 const ls = {
   get: (k, def) => { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : def; } catch { return def; } },
   set: (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
 };
-const getPasswords = () => ls.get("lt_passwords", { admin: "1234", viewer: "Zesuliwe" });
-const savePasswords = (p) => ls.set("lt_passwords", p);
 const getSettings = () => ls.get("lt_settings", { rate: 30, type: "compound" });
 const saveSettings = (s) => ls.set("lt_settings", s);
 const getBalance = () => ls.get("lt_balance", 0);
@@ -143,9 +151,11 @@ const css = `
   .header-left p { font-size: 12px; color: var(--muted); margin-top: 2px; }
   .header-right { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
   .role-badge { font-size: 10px; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; padding: 4px 10px; border-radius: 20px; background: var(--accent-light); color: var(--accent); }
+  .badge-red { background: #fef2f2; color: #7f1d1d; }
   .tabs { display: flex; gap: 2px; margin-bottom: 20px; border-bottom: 2px solid var(--border); flex-wrap: wrap; }
-  .tab { padding: 10px 16px; font-size: 13px; font-weight: 500; color: var(--muted); cursor: pointer; border: none; background: none; border-bottom: 2px solid transparent; margin-bottom: -2px; transition: all 0.15s; white-space: nowrap; font-family: 'DM Sans', sans-serif; }
+  .tab { padding: 10px 16px; font-size: 13px; font-weight: 500; color: var(--muted); cursor: pointer; border: none; background: none; border-bottom: 2px solid transparent; margin-bottom: -2px; transition: all 0.15s; white-space: nowrap; font-family: 'DM Sans', sans-serif; position: relative; }
   .tab.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
+  .tab-badge { position: absolute; top: -8px; right: 8px; background: #dc2626; color: #fff; border-radius: 50%; width: 18px; height: 18px; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 600; }
   .btn { display: inline-flex; align-items: center; gap: 6px; font-family: 'DM Sans', sans-serif; font-size: 13px; font-weight: 500; padding: 9px 16px; border-radius: 8px; border: none; cursor: pointer; transition: all 0.15s; white-space: nowrap; }
   .btn-primary { background: var(--accent); color: #fff; }
   .btn-primary:hover { background: #0f2418; }
@@ -160,8 +170,6 @@ const css = `
   .stat-card .label { font-size: 10px; font-weight: 600; letter-spacing: 0.8px; text-transform: uppercase; color: var(--muted); margin-bottom: 4px; }
   .stat-card .value { font-family: 'Playfair Display', serif; font-size: 20px; }
   .stat-card .sub { font-size: 11px; color: var(--muted); margin-top: 4px; }
-  .stat-card .edit-btn { position: absolute; top: 10px; right: 10px; font-size: 11px; color: var(--muted); background: none; border: none; cursor: pointer; padding: 2px 8px; border-radius: 4px; font-family: 'DM Sans', sans-serif; }
-  .stat-card .edit-btn:hover { background: var(--border); }
   .fin-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 20px; }
   .toolbar { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; align-items: center; }
   .filter-btn { font-size: 12px; font-weight: 500; padding: 6px 12px; border-radius: 20px; border: 1px solid var(--border); background: var(--surface); color: var(--muted); cursor: pointer; transition: all 0.15s; }
@@ -234,6 +242,10 @@ const css = `
   .net-card .label { font-size: 10px; font-weight: 600; letter-spacing: 0.8px; text-transform: uppercase; color: var(--accent); margin-bottom: 4px; }
   .net-card .value { font-family: 'Playfair Display', serif; font-size: 24px; color: var(--accent); }
   .net-card .sub { font-size: 11px; color: var(--accent); margin-top: 4px; opacity: 0.7; }
+  .app-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; margin-bottom: 16px; }
+  .app-photos { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 12px; }
+  .app-photo { width: 100%; aspect-ratio: 3/4; border-radius: 8px; object-fit: cover; border: 1px solid var(--border); }
+  .app-actions { display: flex; gap: 8px; margin-top: 14px; }
   @media (min-width: 768px) {
     .app { padding: 24px 20px 80px; }
     .stats { grid-template-columns: repeat(4, 1fr); }
@@ -248,15 +260,14 @@ const css = `
   }
 `;
 
-// ── Login ─────────────────────────────────────────────────────────────────────
+// ── Login Screen ──────────────────────────────────────────────────────────────
 function LoginScreen({ onLogin }) {
   const [role, setRole] = useState("viewer");
   const [pin, setPin] = useState("");
   const [error, setError] = useState("");
   const handleLogin = () => {
-    const p = getPasswords();
-    if (role === "admin") { if (pin === p.admin) onLogin("admin"); else setError("Incorrect PIN."); }
-    else { if (pin === p.viewer) onLogin("viewer"); else setError("Incorrect password."); }
+    if (role === "admin") { if (pin === ADMIN_PIN) onLogin("admin"); else setError("Incorrect PIN."); }
+    else { if (pin === VIEWER_PASSWORD) onLogin("viewer"); else setError("Incorrect password."); }
   };
   return (
     <div className="login-wrap">
@@ -286,184 +297,249 @@ function LoginScreen({ onLogin }) {
   );
 }
 
-// ── Image Upload ──────────────────────────────────────────────────────────────
+// ── Image Upload Component ────────────────────────────────────────────────────
 function ImageUpload({ label, preview, onChange }) {
   const ref = useRef();
   return (
     <div className="form-group">
       <label>{label}</label>
       <div className="img-upload-box" onClick={() => ref.current.click()}>
-        <input ref={ref} type="file" accept="image/*" style={{ display: "none" }} onChange={(e) => onChange(e.target.files?.[0])} />
-        {preview ? <img src={preview} alt="preview" className="img-preview" /> : <p>Tap to upload</p>}
+        <input ref={ref} type="file" accept="image/*" style={{ display: "none" }} onChange={(e) => {
+          const file = e.target.files?.[0];
+          if (file) {
+            const reader = new FileReader();
+            reader.onload = (e) => onChange(e.target.result);
+            reader.readAsDataURL(file);
+          }
+        }} />
+        {preview ? <img src={preview} alt="preview" className="img-preview" /> : <p>📷 Tap to upload</p>}
       </div>
     </div>
   );
 }
 
-// ── Loan Modal ────────────────────────────────────────────────────────────────
-function LoanModal({ loan, onSave, onClose }) {
+// ── QR Code Modal ─────────────────────────────────────────────────────────────
+function QRModal({ onClose }) {
+  const qrRef = useRef();
+  const applURL = `${window.location.origin}/apply`;
+  
+  return (
+    <div className="overlay" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header">
+          <h2>📱 Client QR Code</h2>
+        </div>
+        <div className="modal-body" style={{ alignItems: "center" }}>
+          <p style={{ fontSize: 12, color: "var(--muted)" }}>Share this QR code with clients to apply for loans</p>
+          <div ref={qrRef} style={{ padding: 16, background: "#fff", borderRadius: 12 }}>
+            <QRCode value={applURL} size={200} level="H" />
+          </div>
+          <p style={{ fontSize: 11, color: "var(--muted)", textAlign: "center" }}>URL: {applURL}</p>
+          <button className="btn btn-primary" style={{ width: "100%" }} onClick={() => {
+            const canvas = qrRef.current.querySelector("canvas");
+            const link = document.createElement("a");
+            link.href = canvas.toDataURL();
+            link.download = "loan-qr-code.png";
+            link.click();
+          }}>
+            📥 Download QR Code
+          </button>
+        </div>
+        <div className="modal-footer">
+          <button className="btn btn-ghost" onClick={onClose}>Close</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Application Form (Client QR) ──────────────────────────────────────────────
+function ApplicationForm({ onSuccess }) {
   const [form, setForm] = useState({
-    borrower_name: loan?.borrower_name || "", phone: loan?.phone || "",
-    account_number: loan?.account_number || "", residency_place: loan?.residency_place || "",
-    amount: loan?.amount || "", loan_date: loan?.loan_date || new Date().toISOString().split("T")[0],
-    due_date: loan?.due_date || "", notes: loan?.notes || "", status: loan?.status || "active",
-    image1: loan?.image1 || "", image2: loan?.image2 || "",
+    borrower_name: "",
+    phone: "",
+    residency_place: "",
+    bank_name: "",
+    account_number: "",
+    amount: "",
+    due_date: "",
   });
-  const [saving, setSaving] = useState(false);
-  const [err, setErr] = useState("");
-  const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
-  const handleImg = (key, file) => { if (!file) return; const r = new FileReader(); r.onload = (e) => set(key, e.target.result); r.readAsDataURL(file); };
-  const handleSave = async () => {
-    if (!form.borrower_name.trim()) return setErr("Name required.");
-    if (!form.phone.trim()) return setErr("Phone required.");
-    if (!form.amount || isNaN(form.amount)) return setErr("Valid amount required.");
-    if (!form.due_date) return setErr("Due date required.");
-    setSaving(true); setErr("");
-    try { await onSave(form); onClose(); }
-    catch (e) { setErr("Save failed: " + e.message); setSaving(false); }
+  const [image1, setImage1] = useState(null);
+  const [image2, setImage2] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState(false);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!form.borrower_name || !form.phone || !form.amount || !form.due_date) {
+      setError("Please fill all required fields");
+      return;
+    }
+    if (!image1 || !image2) {
+      setError("Please upload both selfie and document photos");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const application = {
+        borrower_name: form.borrower_name,
+        phone: form.phone,
+        residency_place: form.residency_place,
+        bank_name: form.bank_name,
+        account_number: form.account_number,
+        amount: Number(form.amount),
+        due_date: form.due_date,
+        image1,
+        image2,
+        status: "pending",
+      };
+      
+      await sb("POST", "/pending_applications", application);
+      setError("");
+      setSuccess(true);
+      setTimeout(() => {
+        window.location.href = "/";
+      }, 2000);
+    } catch (err) {
+      setError("Failed to submit application: " + err.message);
+    }
+    setLoading(false);
   };
+
+  if (success) {
+    return (
+      <div style={{ background: "var(--bg)", minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: "20px" }}>
+        <div style={{ textAlign: "center", maxWidth: 400 }}>
+          <div style={{ fontSize: 48, marginBottom: 16 }}>✅</div>
+          <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: 24, color: "var(--accent)", marginBottom: 8 }}>Application Submitted!</h1>
+          <p style={{ color: "var(--muted)", marginBottom: 16 }}>Your loan application has been received. You will be contacted soon.</p>
+          <p style={{ fontSize: 12, color: "var(--muted)" }}>Redirecting...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="modal">
-        <div className="modal-header"><h2>{loan ? "Edit Loan" : "Add New Loan"}</h2></div>
-        <div className="modal-body">
-          <div className="form-group"><label>Borrower Full Name</label><input value={form.borrower_name} onChange={(e) => set("borrower_name", e.target.value)} placeholder="Full name" /></div>
-          <div className="form-group"><label>WhatsApp Number</label><input value={form.phone} onChange={(e) => set("phone", e.target.value)} placeholder="e.g. 0812345678" /></div>
-          <div className="form-row">
-            <div className="form-group"><label>Account Number</label><input value={form.account_number} onChange={(e) => set("account_number", e.target.value)} placeholder="Bank account" /></div>
-            <div className="form-group"><label>Residency / Area</label><input value={form.residency_place} onChange={(e) => set("residency_place", e.target.value)} placeholder="City or area" /></div>
+    <div style={{ background: "var(--bg)", minHeight: "100vh", padding: "20px 16px" }}>
+      <div className="app" style={{ maxWidth: 500 }}>
+        <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: 26, color: "var(--accent)", marginBottom: 8 }}>Loan Application</h1>
+        <p style={{ color: "var(--muted)", fontSize: 13, marginBottom: 24 }}>Submit your details to apply for a loan</p>
+
+        <form onSubmit={handleSubmit} style={{ background: "var(--surface)", borderRadius: "var(--radius)", padding: 20, border: "1px solid var(--border)" }}>
+          <div className="form-group" style={{ marginBottom: 16 }}>
+            <label>Full Name *</label>
+            <input type="text" placeholder="Enter your full name" value={form.borrower_name} onChange={(e) => setForm({...form, borrower_name: e.target.value})} />
           </div>
-          <div className="form-row">
-            <div className="form-group"><label>Amount (ZAR)</label><input type="number" value={form.amount} onChange={(e) => set("amount", e.target.value)} placeholder="0" /></div>
-            <div className="form-group"><label>Status</label>
-              <select value={form.status} onChange={(e) => set("status", e.target.value)}>
-                <option value="active">Active</option><option value="paid">Paid</option>
-              </select>
-            </div>
+
+          <div className="form-group" style={{ marginBottom: 16 }}>
+            <label>Phone *</label>
+            <input type="tel" placeholder="+27 123 456 7890" value={form.phone} onChange={(e) => setForm({...form, phone: e.target.value})} />
           </div>
-          <div className="form-row">
-            <div className="form-group"><label>Loan Date</label><input type="date" value={form.loan_date} onChange={(e) => set("loan_date", e.target.value)} /></div>
-            <div className="form-group"><label>Due Date</label><input type="date" value={form.due_date} onChange={(e) => set("due_date", e.target.value)} /></div>
+
+          <div className="form-group" style={{ marginBottom: 16 }}>
+            <label>Residency Place</label>
+            <input type="text" placeholder="Your address" value={form.residency_place} onChange={(e) => setForm({...form, residency_place: e.target.value})} />
           </div>
-          <div className="form-group"><label>Notes / Reference</label><input value={form.notes} onChange={(e) => set("notes", e.target.value)} placeholder="Optional" /></div>
-          <div className="form-row">
-            <ImageUpload label="Photo 1 — ID / Profile" preview={form.image1} onChange={(f) => handleImg("image1", f)} />
-            <ImageUpload label="Photo 2 — Residence" preview={form.image2} onChange={(f) => handleImg("image2", f)} />
+
+          <div className="form-group" style={{ marginBottom: 16 }}>
+            <label>Bank Name</label>
+            <input type="text" placeholder="E.g., First National Bank" value={form.bank_name} onChange={(e) => setForm({...form, bank_name: e.target.value})} />
           </div>
-          {err && <p style={{ color: "var(--danger)", fontSize: 13 }}>{err}</p>}
-        </div>
-        <div className="modal-footer">
-          <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
-          <button className="btn btn-primary" onClick={handleSave} disabled={saving}>{saving ? "Saving..." : "Save Loan"}</button>
-        </div>
+
+          <div className="form-group" style={{ marginBottom: 16 }}>
+            <label>Account Number</label>
+            <input type="text" placeholder="Your account number" value={form.account_number} onChange={(e) => setForm({...form, account_number: e.target.value})} />
+          </div>
+
+          <div className="form-group" style={{ marginBottom: 16 }}>
+            <label>Loan Amount (ZAR) *</label>
+            <input type="number" placeholder="5000" value={form.amount} onChange={(e) => setForm({...form, amount: e.target.value})} />
+          </div>
+
+          <div className="form-group" style={{ marginBottom: 16 }}>
+            <label>Repayment Date *</label>
+            <input type="date" value={form.due_date} onChange={(e) => setForm({...form, due_date: e.target.value})} />
+          </div>
+
+          <ImageUpload label="📸 Selfie Photo *" preview={image1} onChange={setImage1} />
+          
+          <ImageUpload label="📋 Document Photo (Student Card/ID) *" preview={image2} onChange={setImage2} />
+
+          {error && <div style={{ color: "var(--danger)", fontSize: 12, marginTop: 16, padding: 12, background: "var(--danger-light)", borderRadius: 8 }}>{error}</div>}
+
+          <div style={{ display: "flex", gap: 8, marginTop: 24 }}>
+            <button type="button" className="btn btn-ghost" style={{ flex: 1 }} onClick={() => window.history.back()}>Cancel</button>
+            <button type="submit" className="btn btn-primary" style={{ flex: 1 }} disabled={loading}>{loading ? "Submitting..." : "Submit Application"}</button>
+          </div>
+        </form>
       </div>
     </div>
   );
 }
 
-// ── Confirm Modal ─────────────────────────────────────────────────────────────
-function ConfirmModal({ message, onConfirm, onClose, confirmLabel = "Yes, Proceed", confirmClass = "btn-danger" }) {
-  return (
-    <div className="overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="modal">
-        <div className="modal-header"><h2>Confirm</h2></div>
-        <div className="modal-body"><p style={{ fontSize: 14 }}>{message}</p></div>
-        <div className="modal-footer">
-          <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
-          <button className={`btn ${confirmClass}`} onClick={onConfirm}>{confirmLabel}</button>
-        </div>
-      </div>
-    </div>
-  );
-}
+// ── Pending Applications Card ─────────────────────────────────────────────────
+function PendingApplicationCard({ app, onApprove, onReject }) {
+  const [lightboxImg, setLightboxImg] = useState(null);
 
-// ── Liability Modal ───────────────────────────────────────────────────────────
-function LiabilityModal({ liability, onSave, onClose }) {
-  const [form, setForm] = useState({ name: liability?.name || "", amount: liability?.amount || "", team_member: liability?.team_member || "" });
-  const [saving, setSaving] = useState(false);
-  const [err, setErr] = useState("");
-  const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
-  const handleSave = async () => {
-    if (!form.name.trim()) return setErr("Name required.");
-    if (!form.amount || isNaN(form.amount)) return setErr("Valid amount required.");
-    setSaving(true); setErr("");
-    try { await onSave(form); onClose(); }
-    catch { setErr("Save failed."); setSaving(false); }
-  };
   return (
-    <div className="overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="modal">
-        <div className="modal-header"><h2>{liability ? "Edit Liability" : "Add Liability"}</h2></div>
-        <div className="modal-body">
-          <div className="form-group"><label>Person / Company Name</label><input value={form.name} onChange={(e) => set("name", e.target.value)} placeholder="Who lent us money" /></div>
-          <div className="form-group"><label>Amount (ZAR)</label><input type="number" value={form.amount} onChange={(e) => set("amount", e.target.value)} placeholder="0" /></div>
-          <div className="form-group"><label>Team Member (who found them)</label><input value={form.team_member} onChange={(e) => set("team_member", e.target.value)} placeholder="Team member name" /></div>
-          {err && <p style={{ color: "var(--danger)", fontSize: 13 }}>{err}</p>}
+    <>
+      <div className="app-card">
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start" }}>
+          <div>
+            <h3 style={{ fontSize: 15, fontWeight: 600, marginBottom: 4 }}>{app.borrower_name}</h3>
+            <p style={{ fontSize: 12, color: "var(--muted)" }}>{app.phone}</p>
+          </div>
+          <span className="status-pill" style={{ background: "#fef3c7", color: "#92400e" }}>Pending</span>
         </div>
-        <div className="modal-footer">
-          <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
-          <button className="btn btn-primary" onClick={handleSave} disabled={saving}>{saving ? "Saving..." : "Save"}</button>
-        </div>
-      </div>
-    </div>
-  );
-}
 
-// ── Settings Modal ────────────────────────────────────────────────────────────
-function SettingsModal({ onClose, showToast }) {
-  const p = getPasswords();
-  const [adminPin, setAdminPin] = useState(p.admin);
-  const [viewerPass, setViewerPass] = useState(p.viewer);
-  const handleSave = () => {
-    if (!adminPin.trim() || !viewerPass.trim()) return;
-    savePasswords({ admin: adminPin, viewer: viewerPass });
-    showToast("Passwords updated.");
-    setTimeout(onClose, 800);
-  };
-  return (
-    <div className="overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="modal">
-        <div className="modal-header"><h2>Settings — Change Passwords</h2></div>
-        <div className="modal-body">
-          <div className="form-group"><label>Admin PIN</label><input type="password" value={adminPin} onChange={(e) => setAdminPin(e.target.value)} /></div>
-          <div className="form-group"><label>Viewer Password</label><input type="password" value={viewerPass} onChange={(e) => setViewerPass(e.target.value)} /></div>
-          <p className="info-text">Share the viewer password with people you want to give access to.</p>
+        <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--border)", fontSize: 12, lineHeight: 1.6 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+            <span style={{ color: "var(--muted)" }}>Loan Amount:</span>
+            <span style={{ fontWeight: 600, fontFamily: "'Playfair Display', serif" }}>{fmt(app.amount)}</span>
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+            <span style={{ color: "var(--muted)" }}>Due Date:</span>
+            <span>{new Date(app.due_date).toLocaleDateString("en-ZA")}</span>
+          </div>
+          {app.bank_name && <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+            <span style={{ color: "var(--muted)" }}>Bank:</span>
+            <span>{app.bank_name}</span>
+          </div>}
+          {app.residency_place && <div style={{ display: "flex", justifyContent: "space-between" }}>
+            <span style={{ color: "var(--muted)" }}>Address:</span>
+            <span>{app.residency_place}</span>
+          </div>}
         </div>
-        <div className="modal-footer">
-          <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
-          <button className="btn btn-primary" onClick={handleSave}>Save Changes</button>
-        </div>
-      </div>
-    </div>
-  );
-}
 
-// ── Balance Modal ─────────────────────────────────────────────────────────────
-function BalanceModal({ current, onSave, onClose }) {
-  const [val, setVal] = useState(current);
-  return (
-    <div className="overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="modal">
-        <div className="modal-header"><h2>Edit Available Balance</h2></div>
-        <div className="modal-body">
-          <div className="form-group"><label>Balance (ZAR)</label><input type="number" value={val} onChange={(e) => setVal(e.target.value)} /></div>
-          <p className="info-text">Your cash on hand available to lend. Decreases when loans are added, increases when loans are repaid.</p>
-        </div>
-        <div className="modal-footer">
-          <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
-          <button className="btn btn-primary" onClick={() => { onSave(Number(val)); onClose(); }}>Save Balance</button>
+        {(app.image1 || app.image2) && (
+          <div className="app-photos">
+            {app.image1 && <img src={app.image1} alt="Selfie" className="app-photo" onClick={() => setLightboxImg(app.image1)} style={{ cursor: "pointer" }} />}
+            {app.image2 && <img src={app.image2} alt="Document" className="app-photo" onClick={() => setLightboxImg(app.image2)} style={{ cursor: "pointer" }} />}
+          </div>
+        )}
+
+        <div className="app-actions">
+          <button className="btn btn-primary" style={{ flex: 1 }} onClick={() => onApprove(app)}>✅ Accept</button>
+          <button className="btn btn-danger" style={{ flex: 1 }} onClick={() => onReject(app.id)}>❌ Reject</button>
         </div>
       </div>
-    </div>
+
+      {lightboxImg && <div className="lightbox" onClick={() => setLightboxImg(null)}>
+        <img src={lightboxImg} alt="Full size" />
+        <button className="lightbox-close" onClick={() => setLightboxImg(null)}>✕</button>
+      </div>}
+    </>
   );
 }
 
 // ── Main App ──────────────────────────────────────────────────────────────────
-export default function LoanTracker() {
-  const [role, setRole] = useState(null);
+function MainApp({ role, onLogout }) {
   const [tab, setTab] = useState("loans");
   const [loans, setLoans] = useState([]);
   const [liabilities, setLiabilities] = useState([]);
+  const [pending, setPending] = useState([]);
   const [loading, setLoading] = useState(false);
   const [filter, setFilter] = useState("all");
   const [search, setSearch] = useState("");
@@ -476,19 +552,25 @@ export default function LoanTracker() {
   const [balance, setBalance] = useState(getBalance());
   const [settings, setSettings] = useState(getSettings());
   const [overduePrompt, setOverduePrompt] = useState(null);
+  const [showQRModal, setShowQRModal] = useState(false);
 
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(""), 3200); };
 
   const fetchAll = useCallback(async () => {
     setLoading(true);
     try {
-      const [l, li] = await Promise.all([
+      const [l, li, p] = await Promise.all([
         sb("GET", "/loans?order=created_at.desc"),
         sb("GET", "/liabilities?order=created_at.desc").catch(() => []),
+        sb("GET", "/pending_applications?status=eq.pending&order=created_at.desc").catch(() => []),
       ]);
       setLoans(l);
       setLiabilities(li);
-    } catch { showToast("Error loading data."); }
+      setPending(p);
+    } catch (err) { 
+      console.error("Error loading data:", err);
+      showToast("Error: " + (err.message || "Failed to load data")); 
+    }
     setLoading(false);
   }, []);
 
@@ -498,10 +580,7 @@ export default function LoanTracker() {
     if (!role || !loans.length) return;
     const overdueLoan = loans.find(l => l.status === "active" && daysLeft(l.due_date) < -28 && !l.interest_prompted);
     if (overdueLoan && !overduePrompt) setOverduePrompt(overdueLoan);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loans, role]);
-
-  if (!role) return (<><style>{css}</style><LoginScreen onLogin={setRole} /></>);
+  }, [loans, role, overduePrompt]);
 
   const { rate, type } = settings;
   const active = loans.filter(l => l.status === "active");
@@ -551,7 +630,7 @@ export default function LoanTracker() {
       setBalance(newBal); saveBalance(newBal);
       showToast(`Loan added. Balance reduced by ${fmt(principal)}.`);
     }
-    await fetchAll(); setEditing(null);
+    await fetchAll(); setEditing(null); setModal(null);
   };
 
   const deleteLoan = (loan) => {
@@ -582,6 +661,64 @@ export default function LoanTracker() {
     setModal("confirm");
   };
 
+  const approvePendingApplication = async (app) => {
+    setConfirmData({
+      message: `Approve loan application for ${app.borrower_name} (${fmt(app.amount)})?`,
+      confirmLabel: "Approve", confirmClass: "btn-primary",
+      onConfirm: async () => {
+        try {
+          const loanData = {
+            borrower_name: app.borrower_name,
+            phone: app.phone,
+            amount: app.amount,
+            loan_date: new Date().toISOString().split('T')[0],
+            due_date: app.due_date,
+            notes: "Approved from QR application",
+            status: "active",
+            bank_name: app.bank_name,
+            account_number: app.account_number,
+            residency_place: app.residency_place,
+            image1: app.image1,
+            image2: app.image2,
+          };
+          
+          await sb("POST", "/loans", loanData);
+          await sb("PATCH", `/pending_applications?id=eq.${app.id}`, { status: "approved" });
+          
+          const principal = getPrincipal(app.amount, rate);
+          const newBal = balance - principal;
+          setBalance(newBal);
+          saveBalance(newBal);
+          
+          await fetchAll();
+          setModal(null);
+          showToast("Application approved and added to loans!");
+        } catch (err) {
+          showToast("Failed to approve: " + err.message);
+        }
+      },
+    });
+    setModal("confirm");
+  };
+
+  const rejectPendingApplication = async (appId) => {
+    setConfirmData({
+      message: "Reject this application? This cannot be undone.",
+      confirmLabel: "Reject", confirmClass: "btn-danger",
+      onConfirm: async () => {
+        try {
+          await sb("DELETE", `/pending_applications?id=eq.${appId}`);
+          await fetchAll();
+          setModal(null);
+          showToast("Application rejected.");
+        } catch (err) {
+          showToast("Failed to reject: " + err.message);
+        }
+      },
+    });
+    setModal("confirm");
+  };
+
   const applyOverdueInterest = async (loan, apply) => {
     if (apply) {
       const months = Math.max(1, Math.abs(Math.floor(daysLeft(loan.due_date) / 30)));
@@ -599,278 +736,419 @@ export default function LoanTracker() {
 
   const sendReminder = (loan) => {
     const msg = buildWhatsAppMessage(loan);
-    const phone = loan.phone.replace(/\D/g, "");
-    const normalized = phone.startsWith("27") ? phone : phone.startsWith("0") ? "27" + phone.slice(1) : phone;
-    window.open(`https://wa.me/${normalized}?text=${encodeURIComponent(msg)}`, "_blank");
+    const whatsappUrl = `https://wa.me/${loan.phone.replace(/\D/g, "")}?text=${encodeURIComponent(msg)}`;
+    window.open(whatsappUrl, "_blank");
   };
 
-  const saveLiability = async (form) => {
-    if (editingLiab) { await sb("PATCH", `/liabilities?id=eq.${editingLiab.id}`, form); showToast("Updated."); }
-    else { await sb("POST", "/liabilities", form); showToast("Liability added."); }
-    await fetchAll(); setEditingLiab(null);
+  const LoanModal = () => {
+    const [form, setForm] = useState(editing || { borrower_name: "", phone: "", amount: "", loan_date: new Date().toISOString().split('T')[0], due_date: "", notes: "", status: "active", bank_name: "", account_number: "", residency_place: "" });
+
+    return (
+      <div className="overlay" onClick={() => setModal(null)}>
+        <div className="modal" onClick={(e) => e.stopPropagation()}>
+          <div className="modal-header"><h2>{editing ? "Edit Loan" : "Add Loan"}</h2></div>
+          <div className="modal-body">
+            <div className="form-group">
+              <label>Borrower Name</label>
+              <input type="text" value={form.borrower_name} onChange={(e) => setForm({...form, borrower_name: e.target.value})} />
+            </div>
+            <div className="form-row">
+              <div className="form-group">
+                <label>Phone</label>
+                <input type="tel" value={form.phone} onChange={(e) => setForm({...form, phone: e.target.value})} />
+              </div>
+              <div className="form-group">
+                <label>Amount (ZAR)</label>
+                <input type="number" value={form.amount} onChange={(e) => setForm({...form, amount: e.target.value})} />
+              </div>
+            </div>
+            <div className="form-row">
+              <div className="form-group">
+                <label>Loan Date</label>
+                <input type="date" value={form.loan_date} onChange={(e) => setForm({...form, loan_date: e.target.value})} />
+              </div>
+              <div className="form-group">
+                <label>Due Date</label>
+                <input type="date" value={form.due_date} onChange={(e) => setForm({...form, due_date: e.target.value})} />
+              </div>
+            </div>
+            <div className="form-group">
+              <label>Bank Name</label>
+              <input type="text" value={form.bank_name} onChange={(e) => setForm({...form, bank_name: e.target.value})} />
+            </div>
+            <div className="form-group">
+              <label>Account Number</label>
+              <input type="text" value={form.account_number} onChange={(e) => setForm({...form, account_number: e.target.value})} />
+            </div>
+            <div className="form-group">
+              <label>Residency Place</label>
+              <input type="text" value={form.residency_place} onChange={(e) => setForm({...form, residency_place: e.target.value})} />
+            </div>
+            <div className="form-group">
+              <label>Notes</label>
+              <input type="text" value={form.notes} onChange={(e) => setForm({...form, notes: e.target.value})} />
+            </div>
+            <div className="form-group">
+              <label>Status</label>
+              <select value={form.status} onChange={(e) => setForm({...form, status: e.target.value})}>
+                <option value="active">Active</option>
+                <option value="paid">Paid</option>
+              </select>
+            </div>
+          </div>
+          <div className="modal-footer">
+            <button className="btn btn-ghost" onClick={() => setModal(null)}>Cancel</button>
+            <button className="btn btn-primary" onClick={() => saveLoan(form)}>Save</button>
+            {editing && <button className="btn btn-danger" onClick={() => deleteLoan(editing)}>Delete</button>}
+          </div>
+        </div>
+      </div>
+    );
   };
 
-  const deleteLiability = (liab) => {
-    setConfirmData({
-      message: `Delete liability for ${liab.name}?`,
-      onConfirm: async () => {
-        setLiabilities(prev => prev.filter(l => l.id !== liab.id));
-        setModal(null);
-        try { await sb("DELETE", `/liabilities?id=eq.${liab.id}`); showToast("Deleted."); }
-        catch { showToast("Delete failed."); await fetchAll(); }
-      },
-    });
-    setModal("confirm");
+  const LiabilityModal = () => {
+    const [form, setForm] = useState(editingLiab || { name: "", amount: "", team_member: "" });
+
+    return (
+      <div className="overlay" onClick={() => setModal(null)}>
+        <div className="modal" onClick={(e) => e.stopPropagation()}>
+          <div className="modal-header"><h2>{editingLiab ? "Edit Liability" : "Add Liability"}</h2></div>
+          <div className="modal-body">
+            <div className="form-group">
+              <label>Name</label>
+              <input type="text" value={form.name} onChange={(e) => setForm({...form, name: e.target.value})} />
+            </div>
+            <div className="form-group">
+              <label>Amount (ZAR)</label>
+              <input type="number" value={form.amount} onChange={(e) => setForm({...form, amount: e.target.value})} />
+            </div>
+            <div className="form-group">
+              <label>Team Member</label>
+              <input type="text" value={form.team_member} onChange={(e) => setForm({...form, team_member: e.target.value})} />
+            </div>
+          </div>
+          <div className="modal-footer">
+            <button className="btn btn-ghost" onClick={() => setModal(null)}>Cancel</button>
+            <button className="btn btn-primary" onClick={async () => {
+              const path = editingLiab ? `/liabilities?id=eq.${editingLiab.id}` : "/liabilities";
+              const method = editingLiab ? "PATCH" : "POST";
+              await sb(method, path, form);
+              showToast(editingLiab ? "Liability updated." : "Liability added.");
+              await fetchAll(); setEditingLiab(null); setModal(null);
+            }}>Save</button>
+            {editingLiab && <button className="btn btn-danger" onClick={async () => {
+              await sb("DELETE", `/liabilities?id=eq.${editingLiab.id}`);
+              showToast("Liability deleted.");
+              await fetchAll(); setEditingLiab(null); setModal(null);
+            }}>Delete</button>}
+          </div>
+        </div>
+      </div>
+    );
   };
 
-  const updateSettings = (s) => { setSettings(s); saveSettings(s); };
+  const ConfirmModal = () => {
+    return (
+      <div className="overlay" onClick={() => setModal(null)}>
+        <div className="modal" onClick={(e) => e.stopPropagation()}>
+          <div className="modal-header"><h2>Confirm Action</h2></div>
+          <div className="modal-body"><p>{confirmData.message}</p></div>
+          <div className="modal-footer">
+            <button className="btn btn-ghost" onClick={() => setModal(null)}>Cancel</button>
+            <button className={`btn ${confirmData.confirmClass || "btn-primary"}`} onClick={() => confirmData.onConfirm()}>
+              {confirmData.confirmLabel || "Confirm"}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   return (
-    <>
+    <div className="app">
       <style>{css}</style>
-      <div className="app">
 
-        {/* Header */}
-        <div className="header">
-          <div className="header-left">
-            <h1>LoanTrack</h1>
-            <p>Professional Loan Management Dashboard</p>
-          </div>
-          <div className="header-right">
-            <span className="role-badge">{role}</span>
-            {role === "admin" && tab === "loans" && <button className="btn btn-primary btn-sm" onClick={() => { setEditing(null); setModal("add"); }}>+ Add Loan</button>}
-            {role === "admin" && tab === "liabilities" && <button className="btn btn-primary btn-sm" onClick={() => { setEditingLiab(null); setModal("liability"); }}>+ Add Liability</button>}
-            {role === "admin" && <button className="btn btn-ghost btn-sm" onClick={() => setModal("settings")}>Settings</button>}
-            <button className="btn btn-ghost btn-sm" onClick={() => setRole(null)}>Logout</button>
-          </div>
+      {/* Header */}
+      <div className="header">
+        <div className="header-left">
+          <h1>LoanTrack</h1>
+          <p>Professional Loan Management System</p>
         </div>
-
-        {/* Overdue interest prompt */}
-        {overduePrompt && role === "admin" && (
-          <div className="overdue-prompt">
-            <strong>Overdue Loan — {overduePrompt.borrower_name}</strong>
-            <div style={{ fontSize: 13, color: "#92400e" }}>
-              Overdue by {Math.abs(Math.floor(daysLeft(overduePrompt.due_date) / 30))} month(s).
-              Current amount: <strong>{fmt(overduePrompt.amount)}</strong>.
-              Apply {rate}% {type} interest?
-            </div>
-            <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
-              <button className="btn btn-warning btn-sm" onClick={() => applyOverdueInterest(overduePrompt, true)}>Apply Interest</button>
-              <button className="btn btn-ghost btn-sm" onClick={() => applyOverdueInterest(overduePrompt, false)}>Leave As Is</button>
-            </div>
-          </div>
-        )}
-
-        {/* Tabs */}
-        <div className="tabs">
-          {[["loans","Loans"],["finance","Finance"],["liabilities","Liabilities"],["performance","Performance"]].map(([t, label]) => (
-            <button key={t} className={`tab ${tab === t ? "active" : ""}`} onClick={() => setTab(t)}>{label}</button>
-          ))}
+        <div className="header-right">
+          <span className="role-badge">{role?.toUpperCase()}</span>
+          <button className="btn btn-ghost btn-sm" onClick={onLogout}>Logout</button>
         </div>
-
-        {/* ── LOANS TAB ── */}
-        {tab === "loans" && (
-          <>
-            <div className="stats">
-              <div className="stat-card"><div className="label">Total Loans</div><div className="value">{loans.length}</div></div>
-              <div className="stat-card"><div className="label">Outstanding</div><div className="value" style={{ color: "var(--gold)" }}>{fmt(totalOutstanding)}</div></div>
-              <div className="stat-card"><div className="label">Overdue</div><div className="value" style={{ color: "var(--danger)" }}>{overdue.length}</div></div>
-              <div className="stat-card"><div className="label">Recovered</div><div className="value" style={{ color: "#16a34a" }}>{paid.length}</div></div>
-            </div>
-            <div className="toolbar">
-              {["all","active","overdue","paid"].map(f => (
-                <button key={f} className={`filter-btn ${filter === f ? "active" : ""}`} onClick={() => setFilter(f)}>{f.charAt(0).toUpperCase() + f.slice(1)}</button>
-              ))}
-              <input className="search-input" placeholder="Search name or phone..." value={search} onChange={(e) => setSearch(e.target.value)} />
-            </div>
-            <div className="table-wrap">
-              {loading ? <div className="loading">Loading...</div> : filtered.length === 0 ? (
-                <div className="empty"><h3>No loans found</h3><p>{role === "admin" ? 'Click "+ Add Loan" to get started.' : "No records match."}</p></div>
-              ) : (
-                <table>
-                  <thead><tr><th>Borrower</th><th>Account</th><th>Amount</th><th>Due Date</th><th>Residency</th><th>Status</th><th>Actions</th></tr></thead>
-                  <tbody>
-                    {filtered.map(loan => {
-                      const s = statusLabel(loan);
-                      return (
-                        <tr key={loan.id}>
-                          <td>
-                            <div className="name-cell">{loan.borrower_name}</div>
-                            <div className="phone-cell">{formatPhoneZA(loan.phone)}</div>
-                            {(loan.image1 || loan.image2) && (
-                              <div className="borrower-photos">
-                                {loan.image1 && <img src={loan.image1} alt="ID" className="borrower-photo" onClick={() => setLightbox(loan.image1)} />}
-                                {loan.image2 && <img src={loan.image2} alt="Res" className="borrower-photo" onClick={() => setLightbox(loan.image2)} />}
-                              </div>
-                            )}
-                          </td>
-                          <td style={{ color: "var(--muted)" }}>{loan.account_number || "—"}</td>
-                          <td className="amount-cell">{fmt(loan.amount)}</td>
-                          <td style={{ color: "var(--muted)", whiteSpace: "nowrap" }}>{new Date(loan.due_date).toLocaleDateString("en-ZA", { day: "numeric", month: "short", year: "numeric" })}</td>
-                          <td style={{ color: "var(--muted)" }}>{loan.residency_place || "—"}</td>
-                          <td><span className="status-pill" style={{ background: s.color + "1a", color: s.color }}>{s.text}</span></td>
-                          <td>
-                            <div className="actions">
-                              {loan.status === "active" && (<>
-                                <button className="btn btn-ghost btn-sm" onClick={() => sendReminder(loan)}>Remind</button>
-                                <button className="btn btn-ghost btn-sm" style={{ color: "#16a34a" }} onClick={() => markPaid(loan)}>Paid</button>
-                              </>)}
-                              {role === "admin" && (<>
-                                <button className="btn btn-ghost btn-sm" onClick={() => { setEditing(loan); setModal("edit"); }}>Edit</button>
-                                <button className="btn btn-danger btn-sm" onClick={() => deleteLoan(loan)}>Del</button>
-                              </>)}
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              )}
-            </div>
-          </>
-        )}
-
-        {/* ── FINANCE TAB ── */}
-        {tab === "finance" && (
-          <>
-            <div className="fin-grid">
-              <div className="stat-card">
-                <div className="label">Available Balance</div>
-                <div className="value" style={{ color: "var(--gold)" }}>{fmt(balance)}</div>
-                <div className="sub">Cash ready to lend out</div>
-                {role === "admin" && <button className="edit-btn" onClick={() => setModal("balance")}>Edit</button>}
-              </div>
-              <div className="stat-card">
-                <div className="label">Invested Amount</div>
-                <div className="value" style={{ color: "var(--blue)" }}>{fmt(totalInvested)}</div>
-                <div className="sub">Principal currently out</div>
-              </div>
-              <div className="stat-card">
-                <div className="label">Total Liabilities</div>
-                <div className="value" style={{ color: "var(--danger)" }}>{fmt(totalLiabilities)}</div>
-                <div className="sub">Money we owe others</div>
-              </div>
-              <div className="net-card">
-                <div className="label">Net Position</div>
-                <div className="value" style={{ color: netPosition >= 0 ? "#16a34a" : "var(--danger)" }}>{fmt(netPosition)}</div>
-                <div className="sub">Balance + Loans − Liabilities</div>
-              </div>
-            </div>
-
-            {role === "admin" && (
-              <div className="profit-card">
-                <h2>Profit Estimator</h2>
-                <div className="rate-controls">
-                  <label>Interest Rate (%/month)</label>
-                  <input type="number" value={settings.rate} style={{ width: 70 }} onChange={(e) => updateSettings({ ...settings, rate: Number(e.target.value) })} />
-                  <label>Interest Type</label>
-                  <select value={settings.type} onChange={(e) => updateSettings({ ...settings, type: e.target.value })}>
-                    <option value="simple">Simple Interest</option>
-                    <option value="compound">Compound Interest</option>
-                  </select>
-                </div>
-                <div className="profit-row">
-                  <span className="plabel">Principal invested (money sent out)</span>
-                  <span className="pval" style={{ color: "var(--blue)" }}>{fmt(totalInvested)}</span>
-                </div>
-                <div className="profit-row">
-                  <span className="plabel">Total to be repaid (loan amounts)</span>
-                  <span className="pval">{fmt(totalOutstanding)}</span>
-                </div>
-                <div className="profit-row">
-                  <span className="plabel">Estimated Total Interest / Profit</span>
-                  <span className="pval" style={{ color: "var(--gold)" }}>{fmt(totalEstimatedInterest)}</span>
-                </div>
-                <div className="profit-row" style={{ background: "var(--accent-light)", borderRadius: 8, padding: "12px 14px", margin: "8px -4px 0" }}>
-                  <span className="plabel" style={{ color: "var(--accent)", fontWeight: 600 }}>Total Return (principal + interest)</span>
-                  <span className="pval" style={{ color: "var(--accent)" }}>{fmt(totalInvested + totalEstimatedInterest)}</span>
-                </div>
-                <p className="info-text" style={{ marginTop: 12 }}>
-                  {type === "compound"
-                    ? "Compound: interest stacks monthly. If unpaid, next month's interest is calculated on previous balance + interest."
-                    : "Simple: interest calculated on original principal only, regardless of months overdue."}
-                </p>
-              </div>
-            )}
-          </>
-        )}
-
-        {/* ── LIABILITIES TAB ── */}
-        {tab === "liabilities" && (
-          <>
-            <div className="stat-card" style={{ marginBottom: 16 }}>
-              <div className="label">Total We Owe</div>
-              <div className="value" style={{ color: "var(--danger)" }}>{fmt(totalLiabilities)}</div>
-            </div>
-            <div className="table-wrap">
-              {liabilities.length === 0 ? (
-                <div className="empty"><h3>No liabilities recorded</h3><p>{role === "admin" ? 'Click "+ Add Liability" to record.' : "Nothing here yet."}</p></div>
-              ) : (
-                <table>
-                  <thead>
-                    <tr><th>Name</th><th>Amount</th><th>Found By</th>{role === "admin" && <th>Actions</th>}</tr>
-                  </thead>
-                  <tbody>
-                    {liabilities.map(liab => (
-                      <tr key={liab.id}>
-                        <td style={{ fontWeight: 600 }}>{liab.name}</td>
-                        <td className="amount-cell">{fmt(liab.amount)}</td>
-                        <td style={{ color: "var(--muted)" }}>{liab.team_member || "—"}</td>
-                        {role === "admin" && (
-                          <td>
-                            <div className="actions">
-                              <button className="btn btn-ghost btn-sm" onClick={() => { setEditingLiab(liab); setModal("liability"); }}>Edit</button>
-                              <button className="btn btn-danger btn-sm" onClick={() => deleteLiability(liab)}>Del</button>
-                            </div>
-                          </td>
-                        )}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
-            </div>
-          </>
-        )}
-
-        {/* ── PERFORMANCE TAB ── */}
-        {tab === "performance" && (
-          <>
-            <div className="stats" style={{ marginBottom: 20 }}>
-              <div className="stat-card"><div className="label">Total Loans</div><div className="value">{loans.length}</div></div>
-              <div className="stat-card"><div className="label">Recovery Rate</div><div className="value" style={{ color: "#16a34a" }}>{loans.length ? Math.round((paid.length / loans.length) * 100) : 0}%</div></div>
-              <div className="stat-card"><div className="label">Overdue Rate</div><div className="value" style={{ color: "var(--danger)" }}>{active.length ? Math.round((overdue.length / active.length) * 100) : 0}%</div></div>
-              <div className="stat-card"><div className="label">Est. Profit</div><div className="value" style={{ color: "var(--gold)" }}>{fmt(totalEstimatedInterest)}</div></div>
-            </div>
-            <div className="charts-grid">
-              <div className="chart-card">
-                <h3>Loan Status Breakdown</h3>
-                <PieChart data={pieData} />
-              </div>
-              <div className="chart-card">
-                <h3>Monthly Collections (Last 6 Months)</h3>
-                <BarChart data={barData} />
-              </div>
-            </div>
-          </>
-        )}
-
       </div>
 
-      {lightbox && (
-        <div className="lightbox" onClick={() => setLightbox(null)}>
-          <button className="lightbox-close" onClick={() => setLightbox(null)}>✕</button>
-          <img src={lightbox} alt="Enlarged" />
+      {/* Overdue Prompt */}
+      {overduePrompt && (
+        <div className="overdue-prompt">
+          <strong>⚠️ Overdue Loan: {overduePrompt.borrower_name}</strong>
+          <p style={{ fontSize: 12, margin: "6px 0 12px" }}>Loan amount {fmt(overduePrompt.amount)} is overdue by {Math.abs(daysLeft(overduePrompt.due_date))} days</p>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button className="btn btn-sm btn-primary" onClick={() => applyOverdueInterest(overduePrompt, true)}>Apply Interest</button>
+            <button className="btn btn-sm btn-ghost" onClick={() => applyOverdueInterest(overduePrompt, false)}>Skip</button>
+          </div>
         </div>
       )}
 
-      {(modal === "add" || modal === "edit") && <LoanModal loan={editing} onSave={saveLoan} onClose={() => { setModal(null); setEditing(null); }} />}
-      {modal === "confirm" && confirmData && <ConfirmModal message={confirmData.message} confirmLabel={confirmData.confirmLabel} confirmClass={confirmData.confirmClass} onConfirm={async () => { await confirmData.onConfirm(); }} onClose={() => setModal(null)} />}
-      {modal === "liability" && <LiabilityModal liability={editingLiab} onSave={saveLiability} onClose={() => { setModal(null); setEditingLiab(null); }} />}
-      {modal === "settings" && <SettingsModal onClose={() => setModal(null)} showToast={showToast} />}
-      {modal === "balance" && <BalanceModal current={balance} onSave={(v) => { setBalance(v); saveBalance(v); showToast("Balance updated."); }} onClose={() => setModal(null)} />}
+      {/* Tabs */}
+      <div className="tabs">
+        <button className={`tab ${tab === "loans" ? "active" : ""}`} onClick={() => setTab("loans")}>
+          💰 Loans {loans.length > 0 && `(${loans.length})`}
+        </button>
+        <button className={`tab ${tab === "pending" ? "active" : ""}`} onClick={() => setTab("pending")}>
+          📥 Applications
+          {pending.length > 0 && <span className="tab-badge">{pending.length}</span>}
+        </button>
+        <button className={`tab ${tab === "liabilities" ? "active" : ""}`} onClick={() => setTab("liabilities")}>
+          📊 Liabilities
+        </button>
+        <button className={`tab ${tab === "finance" ? "active" : ""}`} onClick={() => setTab("finance")}>
+          📈 Finance
+        </button>
+      </div>
+
+      {/* Loans Tab */}
+      {tab === "loans" && (
+        <>
+          <div className="section-header">
+            <h2>Loan Portfolio</h2>
+            {role === "admin" && <button className="btn btn-primary btn-sm" onClick={() => setShowQRModal(true)}>📱 Client QR</button>}
+          </div>
+
+          <div className="stats">
+            <div className="stat-card">
+              <div className="label">Total Active</div>
+              <div className="value">{active.length}</div>
+              <div className="sub">{fmt(totalOutstanding)} outstanding</div>
+            </div>
+            <div className="stat-card">
+              <div className="label">Overdue</div>
+              <div className="value" style={{ color: "#dc2626" }}>{overdue.length}</div>
+            </div>
+            <div className="stat-card">
+              <div className="label">Paid</div>
+              <div className="value" style={{ color: "#16a34a" }}>{paid.length}</div>
+            </div>
+            <div className="stat-card net-card">
+              <div className="label">Net Position</div>
+              <div className="value">{fmt(netPosition)}</div>
+            </div>
+          </div>
+
+          <div className="toolbar">
+            <button className={`filter-btn ${filter === "all" ? "active" : ""}`} onClick={() => setFilter("all")}>All</button>
+            <button className={`filter-btn ${filter === "active" ? "active" : ""}`} onClick={() => setFilter("active")}>Active</button>
+            <button className={`filter-btn ${filter === "overdue" ? "active" : ""}`} onClick={() => setFilter("overdue")}>Overdue</button>
+            <button className={`filter-btn ${filter === "paid" ? "active" : ""}`} onClick={() => setFilter("paid")}>Paid</button>
+            <input type="text" className="search-input" placeholder="Search name or phone..." value={search} onChange={(e) => setSearch(e.target.value)} />
+            {role === "admin" && <button className="btn btn-primary btn-sm" onClick={() => { setEditing(null); setModal("loan"); }}>+ Add Loan</button>}
+          </div>
+
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Borrower</th>
+                  <th>Phone</th>
+                  <th>Amount</th>
+                  <th>Due Date</th>
+                  <th>Status</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.length === 0 ? (
+                  <tr><td colSpan="6" style={{ textAlign: "center", color: "var(--muted)", padding: "32px" }}>No loans found</td></tr>
+                ) : filtered.map(l => (
+                  <tr key={l.id}>
+                    <td className="name-cell">{l.borrower_name}</td>
+                    <td className="phone-cell">{formatPhoneZA(l.phone)}</td>
+                    <td className="amount-cell">{fmt(l.amount)}</td>
+                    <td>{new Date(l.due_date).toLocaleDateString("en-ZA")}</td>
+                    <td><span className="status-pill" style={{ background: statusLabel(l).color + "20", color: statusLabel(l).color }}>{statusLabel(l).text}</span></td>
+                    <td className="actions">
+                      {l.status === "active" && <button className="btn btn-sm btn-primary" onClick={() => markPaid(l)}>✓ Mark Paid</button>}
+                      {l.status === "active" && <button className="btn btn-sm btn-ghost" onClick={() => sendReminder(l)}>💬 Remind</button>}
+                      {role === "admin" && <button className="btn btn-sm btn-ghost" onClick={() => { setEditing(l); setModal("loan"); }}>✏️ Edit</button>}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+
+      {/* Pending Applications Tab */}
+      {tab === "pending" && (
+        <>
+          <div className="section-header"><h2>Pending Applications</h2></div>
+          {loading ? (
+            <div className="loading">Loading...</div>
+          ) : pending.length === 0 ? (
+            <div className="empty"><h3>No Pending Applications</h3><p>Client applications will appear here</p></div>
+          ) : (
+            <div>
+              {pending.map(app => (
+                <PendingApplicationCard 
+                  key={app.id} 
+                  app={app} 
+                  onApprove={approvePendingApplication}
+                  onReject={rejectPendingApplication}
+                />
+              ))}
+            </div>
+          )}
+        </>
+      )}
+
+      {/* Liabilities Tab */}
+      {tab === "liabilities" && (
+        <>
+          <div className="section-header">
+            <h2>Liabilities</h2>
+            {role === "admin" && <button className="btn btn-primary btn-sm" onClick={() => { setEditingLiab(null); setModal("liability"); }}>+ Add Liability</button>}
+          </div>
+
+          <div className="stats">
+            <div className="stat-card">
+              <div className="label">Total Liabilities</div>
+              <div className="value" style={{ color: "#dc2626" }}>{fmt(totalLiabilities)}</div>
+            </div>
+            <div className="stat-card">
+              <div className="label">Balance</div>
+              <div className="value">{fmt(balance)}</div>
+            </div>
+            <div className="stat-card">
+              <div className="label">Net Position</div>
+              <div className="value" style={{ color: netPosition >= 0 ? "#16a34a" : "#dc2626" }}>{fmt(netPosition)}</div>
+            </div>
+          </div>
+
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Amount</th>
+                  <th>Team Member</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {liabilities.length === 0 ? (
+                  <tr><td colSpan="4" style={{ textAlign: "center", color: "var(--muted)", padding: "32px" }}>No liabilities</td></tr>
+                ) : liabilities.map(l => (
+                  <tr key={l.id}>
+                    <td className="name-cell">{l.name}</td>
+                    <td className="amount-cell">{fmt(l.amount)}</td>
+                    <td>{l.team_member}</td>
+                    <td className="actions">
+                      {role === "admin" && <button className="btn btn-sm btn-ghost" onClick={() => { setEditingLiab(l); setModal("liability"); }}>✏️ Edit</button>}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+
+      {/* Finance Tab */}
+      {tab === "finance" && (
+        <>
+          <div className="section-header"><h2>Financial Overview</h2></div>
+
+          <div className="profit-card">
+            <h2>Summary</h2>
+            <div className="profit-row">
+              <span className="plabel">Balance</span>
+              <span className="pval">{fmt(balance)}</span>
+            </div>
+            <div className="profit-row">
+              <span className="plabel">Total Outstanding</span>
+              <span className="pval">{fmt(totalOutstanding)}</span>
+            </div>
+            <div className="profit-row">
+              <span className="plabel">Total Invested (Principal)</span>
+              <span className="pval">{fmt(totalInvested)}</span>
+            </div>
+            <div className="profit-row">
+              <span className="plabel">Estimated Interest</span>
+              <span className="pval">{fmt(totalEstimatedInterest)}</span>
+            </div>
+            <div className="profit-row">
+              <span className="plabel">Total Liabilities</span>
+              <span className="pval" style={{ color: "#dc2626" }}>-{fmt(totalLiabilities)}</span>
+            </div>
+            <div className="profit-row" style={{ borderBottom: "2px solid var(--accent)", paddingTop: 12, marginTop: 12 }}>
+              <span className="plabel" style={{ fontSize: 14, fontWeight: 600 }}>Net Position</span>
+              <span className="pval" style={{ fontSize: 18, color: netPosition >= 0 ? "#16a34a" : "#dc2626" }}>{fmt(netPosition)}</span>
+            </div>
+          </div>
+
+          <div className="rate-controls">
+            <label>Interest Rate: {rate}% ({type})</label>
+            {role === "admin" && (
+              <>
+                <input type="number" value={rate} onChange={(e) => { const s = {...settings, rate: Number(e.target.value)}; setSettings(s); saveSettings(s); }} style={{ width: 80 }} />
+                <select value={type} onChange={(e) => { const s = {...settings, type: e.target.value}; setSettings(s); saveSettings(s); }}>
+                  <option value="simple">Simple</option>
+                  <option value="compound">Compound</option>
+                </select>
+              </>
+            )}
+          </div>
+
+          <div className="charts-grid">
+            <div className="chart-card">
+              <h3>Loan Status Distribution</h3>
+              <PieChart data={pieData} />
+            </div>
+            <div className="chart-card">
+              <h3>Monthly Collections</h3>
+              <BarChart data={barData} />
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Modals */}
+      {modal === "loan" && <LoanModal />}
+      {modal === "liability" && <LiabilityModal />}
+      {modal === "confirm" && <ConfirmModal />}
+      {showQRModal && <QRModal onClose={() => setShowQRModal(false)} />}
+
+      {/* Toast */}
       {toast && <div className="toast">{toast}</div>}
-    </>
+
+      {/* Lightbox */}
+      {lightbox && <div className="lightbox" onClick={() => setLightbox(null)}>
+        <img src={lightbox} alt="Full size" />
+        <button className="lightbox-close" onClick={() => setLightbox(null)}>✕</button>
+      </div>}
+    </div>
   );
 }
+
+// ── Router App ────────────────────────────────────────────────────────────────
+function AppRouter() {
+  const [role, setRole] = useState(null);
+
+  if (!role) {
+    return <><style>{css}</style><LoginScreen onLogin={setRole} /></>;
+  }
+
+  return (
+    <Router>
+      <Routes>
+        <Route path="/" element={<MainApp role={role} onLogout={() => setRole(null)} />} />
+        <Route path="/apply" element={<ApplicationForm />} />
+      </Routes>
+    </Router>
+  );
+}
+
+export default AppRouter;

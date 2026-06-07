@@ -379,7 +379,7 @@ function QRModal({ onClose }) {
 }
 
 // ── Loan Modal (Add / Edit) ───────────────────────────────────────────────────
-function LoanModal({ loan, onSave, onClose }) {
+function LoanModal({ loan, onSave, onClose, deleteLoan }) {
   const [form, setForm] = useState({
     borrower_name:   loan?.borrower_name   || "",
     phone:           loan?.phone           || "",
@@ -485,6 +485,9 @@ function LoanModal({ loan, onSave, onClose }) {
         </div>
         <div className="modal-footer">
           <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
+          {loan && (
+            <button className="btn btn-danger" onClick={() => { onClose(); deleteLoan(loan); }}>Delete</button>
+          )}
           <button className="btn btn-primary" onClick={handleSave} disabled={saving}>
             {saving ? "Saving…" : "Save"}
           </button>
@@ -1103,6 +1106,7 @@ function MainApp({ role, onLogout }) {
           loan={modal==="edit" ? editLoan : null}
           onSave={saveLoan}
           onClose={() => { setModal(null); setEditLoan(null); }}
+          deleteLoan={deleteLoan}
         />
       )}
       {modal==="confirm" && confirmData && (

@@ -170,6 +170,8 @@ const css = `
   .stat-card .label { font-size: 10px; font-weight: 600; letter-spacing: 0.8px; text-transform: uppercase; color: var(--muted); margin-bottom: 4px; }
   .stat-card .value { font-family: 'Playfair Display', serif; font-size: 20px; }
   .stat-card .sub { font-size: 11px; color: var(--muted); margin-top: 4px; }
+  .stat-card .edit-btn { position: absolute; top: 10px; right: 10px; font-size: 10px; font-weight: 600; color: var(--muted); background: none; border: 1px solid var(--border, #e2ddd6); border-radius: 3px; cursor: pointer; padding: 3px 8px; font-family: inherit; }
+  .stat-card .edit-btn:hover { background: #f0ece6; color: var(--text); }
   .fin-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 20px; }
   .toolbar { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; align-items: center; }
   .filter-btn { font-size: 12px; font-weight: 500; padding: 6px 12px; border-radius: 20px; border: 1px solid var(--border); background: var(--surface); color: var(--muted); cursor: pointer; transition: all 0.15s; }
@@ -656,8 +658,14 @@ function MainApp({ role, onLogout }) {
       message: `Delete loan for ${loan.borrower_name}? This cannot be undone.`,
       onConfirm: async () => {
         setLoans(prev => prev.filter(l => l.id !== loan.id));
+        // Restore the principal back to balance only if loan was active
+        if (loan.status === "active") {
+          const principal = getPrincipal(Number(loan.amount), rate);
+          const newBal = balance + principal;
+          setBalance(newBal); saveBalance(newBal);
+        }
         setModal(null);
-        try { await sb("DELETE", `/loans?id=eq.${loan.id}`); showToast("Loan deleted."); }
+        try { await sb("DELETE", `/loans?id=eq.${loan.id}`); showToast("Loan deleted. Balance restored."); }
         catch { showToast("Delete failed."); await fetchAll(); }
       },
     });
@@ -965,23 +973,15 @@ function MainApp({ role, onLogout }) {
           </div>
 
           <div className="table-wrap">
-            <table style={{ tableLayout: "fixed", width: "100%", minWidth: 720 }}>
-              <colgroup>
-                <col style={{ width: "22%" }} />
-                <col style={{ width: "16%" }} />
-                <col style={{ width: "13%" }} />
-                <col style={{ width: "13%" }} />
-                <col style={{ width: "13%" }} />
-                <col style={{ width: "23%" }} />
-              </colgroup>
+            <table>
               <thead>
                 <tr>
-                  <th>Borrower</th>
-                  <th>Residence</th>
-                  <th>Amount</th>
-                  <th>Due Date</th>
-                  <th>Status</th>
-                  <th>Actions</th>
+                  <th style={{ minWidth: 160 }}>Borrower</th>
+                  <th style={{ minWidth: 120 }}>Residence</th>
+                  <th style={{ minWidth: 100 }}>Amount</th>
+                  <th style={{ minWidth: 100 }}>Due Date</th>
+                  <th style={{ minWidth: 90 }}>Status</th>
+                  <th style={{ minWidth: 150 }}>Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -990,7 +990,7 @@ function MainApp({ role, onLogout }) {
                 ) : filtered.map(l => (
                   <tr key={l.id}>
                     <td>
-                      <div className="name-cell" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{l.borrower_name}</div>
+                      <div className="name-cell">{l.borrower_name}</div>
                       <div className="phone-cell">{formatPhoneZA(l.phone)}</div>
                       {(l.image1 || l.image2) && (
                         <div className="borrower-photos">
@@ -1009,16 +1009,14 @@ function MainApp({ role, onLogout }) {
                         </div>
                       )}
                     </td>
-                    <td style={{ color: "var(--muted)", fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{l.residency_place || "—"}</td>
-                    <td className="amount-cell" style={{ whiteSpace: "nowrap" }}>{fmt(l.amount)}</td>
-                    <td style={{ whiteSpace: "nowrap", fontSize: 12 }}>{new Date(l.due_date).toLocaleDateString("en-ZA")}</td>
+                    <td style={{ color: "var(--muted)", fontSize: 12 }}>{l.residency_place || "—"}</td>
+                    <td className="amount-cell">{fmt(l.amount)}</td>
+                    <td style={{ whiteSpace: "nowrap" }}>{new Date(l.due_date).toLocaleDateString("en-ZA")}</td>
                     <td><span className="status-pill" style={{ background: statusLabel(l).color + "20", color: statusLabel(l).color }}>{statusLabel(l).text}</span></td>
-                    <td>
-                      <div className="actions">
-                        {l.status === "active" && <button className="btn btn-sm btn-primary" onClick={() => markPaid(l)}>✓ Paid</button>}
-                        {l.status === "active" && <button className="btn btn-sm btn-ghost" onClick={() => sendReminder(l)}>💬</button>}
-                        {role === "admin" && <button className="btn btn-sm btn-ghost" onClick={() => { setEditing(l); setModal("loan"); }}>✏️</button>}
-                      </div>
+                    <td className="actions">
+                      {l.status === "active" && <button className="btn btn-sm btn-primary" onClick={() => markPaid(l)}>✓ Mark Paid</button>}
+                      {l.status === "active" && <button className="btn btn-sm btn-ghost" onClick={() => sendReminder(l)}>💬 Remind</button>}
+                      {role === "admin" && <button className="btn btn-sm btn-ghost" onClick={() => { setEditing(l); setModal("loan"); }}>✏️ Edit</button>}
                     </td>
                   </tr>
                 ))}
@@ -1067,6 +1065,9 @@ function MainApp({ role, onLogout }) {
             <div className="stat-card">
               <div className="label">Balance</div>
               <div className="value">{fmt(balance)}</div>
+              {role === "admin" && (
+                <button className="edit-btn" onClick={() => setModal("balance")}>Edit</button>
+              )}
             </div>
             <div className="stat-card">
               <div className="label">Net Position</div>
@@ -1167,6 +1168,34 @@ function MainApp({ role, onLogout }) {
       {modal === "liability" && <LiabilityModal />}
       {modal === "confirm" && <ConfirmModal />}
       {showQRModal && <QRModal onClose={() => setShowQRModal(false)} />}
+      {modal === "balance" && (
+        <div className="overlay" onClick={() => setModal(null)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header"><h2>Edit Balance</h2></div>
+            <div className="modal-body">
+              <p style={{ fontSize: 13, color: "var(--muted)" }}>Current balance: <strong style={{ color: "var(--text)" }}>{fmt(balance)}</strong></p>
+              <div className="form-group">
+                <label>New Balance (ZAR)</label>
+                <input
+                  type="number"
+                  defaultValue={balance}
+                  id="balance-input"
+                  placeholder="Enter amount"
+                />
+              </div>
+              <p style={{ fontSize: 11, color: "var(--muted)" }}>This is your available cash to lend out. It reduces when you add loans and increases when loans are repaid.</p>
+            </div>
+            <div className="modal-footer">
+              <button className="btn btn-ghost" onClick={() => setModal(null)}>Cancel</button>
+              <button className="btn btn-primary" onClick={() => {
+                const val = Number(document.getElementById("balance-input").value);
+                if (!isNaN(val)) { setBalance(val); saveBalance(val); showToast(`Balance updated to ${fmt(val)}`); }
+                setModal(null);
+              }}>Save</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Toast */}
       {toast && <div className="toast">{toast}</div>}

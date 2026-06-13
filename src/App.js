@@ -179,7 +179,7 @@ const css = `
   .table-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow-x: auto; box-shadow: var(--shadow); -webkit-overflow-scrolling: touch; }
   table { width: 100%; min-width: 680px; border-collapse: collapse; }
   th { font-size: 10px; font-weight: 600; letter-spacing: 0.8px; text-transform: uppercase; color: var(--muted); padding: 12px 14px; text-align: left; background: #faf9f7; border-bottom: 1px solid var(--border); white-space: nowrap; }
-  td { padding: 12px 14px; font-size: 13px; border-bottom: 1px solid #f0ece6; vertical-align: middle; }
+  td { padding: 12px 14px; font-size: 13px; border-bottom: 1px solid #f0ece6; vertical-align: top; }
   tr:last-child td { border-bottom: none; }
   tr:hover td { background: #faf9f7; }
   .name-cell { font-weight: 600; font-size: 13px; }
@@ -656,8 +656,13 @@ function MainApp({ role, onLogout }) {
       message: `Delete loan for ${loan.borrower_name}? This cannot be undone.`,
       onConfirm: async () => {
         setLoans(prev => prev.filter(l => l.id !== loan.id));
+        if (loan.status === "active") {
+          const principal = getPrincipal(Number(loan.amount), rate);
+          const newBal = balance + principal;
+          setBalance(newBal); saveBalance(newBal);
+        }
         setModal(null);
-        try { await sb("DELETE", `/loans?id=eq.${loan.id}`); showToast("Loan deleted."); }
+        try { await sb("DELETE", `/loans?id=eq.${loan.id}`); showToast("Loan deleted. Balance restored."); }
         catch { showToast("Delete failed."); await fetchAll(); }
       },
     });
@@ -965,23 +970,15 @@ function MainApp({ role, onLogout }) {
           </div>
 
           <div className="table-wrap">
-            <table style={{ tableLayout: "fixed", width: "100%", minWidth: 760 }}>
-              <colgroup>
-                <col style={{ width: "200px" }} />
-                <col style={{ width: "140px" }} />
-                <col style={{ width: "110px" }} />
-                <col style={{ width: "110px" }} />
-                <col style={{ width: "110px" }} />
-                <col style={{ width: "180px" }} />
-              </colgroup>
+            <table>
               <thead>
                 <tr>
-                  <th>Borrower</th>
-                  <th>Residence</th>
-                  <th>Amount</th>
-                  <th>Due Date</th>
-                  <th>Status</th>
-                  <th>Actions</th>
+                  <th style={{ minWidth: 160 }}>Borrower</th>
+                  <th style={{ minWidth: 120 }}>Residence</th>
+                  <th style={{ minWidth: 100 }}>Amount</th>
+                  <th style={{ minWidth: 100 }}>Due Date</th>
+                  <th style={{ minWidth: 90 }}>Status</th>
+                  <th style={{ minWidth: 150 }}>Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -1009,9 +1006,9 @@ function MainApp({ role, onLogout }) {
                         </div>
                       )}
                     </td>
-                    <td style={{ color: "var(--muted)", fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{l.residency_place || "—"}</td>
-                    <td className="amount-cell" style={{ whiteSpace: "nowrap" }}>{fmt(l.amount)}</td>
-                    <td style={{ whiteSpace: "nowrap", fontSize: 12 }}>{new Date(l.due_date).toLocaleDateString("en-ZA")}</td>
+                    <td style={{ color: "var(--muted)", fontSize: 12 }}>{l.residency_place || "—"}</td>
+                    <td className="amount-cell">{fmt(l.amount)}</td>
+                    <td style={{ whiteSpace: "nowrap" }}>{new Date(l.due_date).toLocaleDateString("en-ZA")}</td>
                     <td><span className="status-pill" style={{ background: statusLabel(l).color + "20", color: statusLabel(l).color }}>{statusLabel(l).text}</span></td>
                     <td className="actions">
                       {l.status === "active" && <button className="btn btn-sm btn-primary" onClick={() => markPaid(l)}>✓ Mark Paid</button>}
